@@ -40,8 +40,8 @@ struct FileStartData {
     uint16_t fileNameSize;
     uint8_t fileName[256];
     uint64_t fileSize;
-    uint16_t md5Size;
-    uint8_t md5[64];           // MD5 字符串
+    uint16_t sha256Size;
+    uint8_t sha256[64];        // SHA-256 字符串
 };
 
 // FileReceiveResult 命令的数据结构

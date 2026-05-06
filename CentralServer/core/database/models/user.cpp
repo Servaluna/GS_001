@@ -10,18 +10,18 @@ UserInfo User::authenticate(const QString& username, const QString& password)
         return userInfo;
     }
 
-    // 获取数据库连接
     QSqlDatabase db = DatabaseManager::instance().getDatabase();
-
     if (!db.isOpen()) {
         qCritical() << "数据库未连接";
         return userInfo;
     }
 
-    // 查询用户
     QSqlQuery query(db);
-    query.prepare("SELECT id, username, password_hash, full_name, role, is_active "
-                  "FROM users WHERE username = :username");
+    query.prepare(
+        "SELECT user_id, username, password_hash, role, status, last_login, "
+        "creator_user_id, created_at, updated_at "
+        "FROM users WHERE username = :username"
+    );
     query.bindValue(":username", username);
 
     if (!query.exec()) {
@@ -34,33 +34,30 @@ UserInfo User::authenticate(const QString& username, const QString& password)
         return userInfo;
     }
 
-    // 检查账户是否激活
-    bool isActive = query.value("is_active").toBool();
-    if (!isActive) {
+    int status = query.value("status").toInt();
+    if (status != 1) {
         qWarning() << "账户已禁用:" << username;
         return userInfo;
     }
 
-    // 获取存储的密码哈希
     QString storedHash = query.value("password_hash").toString();
-
-    // 验证密码
     QString inputHash = hashPassword(password);
     if (storedHash != inputHash) {
         qWarning() << "密码错误:" << username;
         return userInfo;
     }
 
-    // 验证成功，填充用户信息
-    userInfo.id = query.value("id").toInt();
+    userInfo.user_id = query.value("user_id").toInt();
     userInfo.username = query.value("username").toString();
-    userInfo.passwordHash = storedHash;
-    userInfo.fullName = query.value("full_name").toString();
+    userInfo.password_hash = storedHash;
     userInfo.role = query.value("role").toString();
-    userInfo.isActive = isActive;
+    userInfo.status = status;
+    userInfo.last_login = query.value("last_login").toDateTime();
+    userInfo.creator_user_id = query.value("creator_user_id").toInt();
+    userInfo.created_at = query.value("created_at").toDateTime();
+    userInfo.updated_at = query.value("updated_at").toDateTime();
 
-    // 更新最后登录时间
-    updateLastLogin(userInfo.id);
+    updateLastLogin(userInfo.user_id);
 
     qDebug() << "用户认证成功:" << username << "角色:" << userInfo.role;
 
@@ -77,16 +74,23 @@ UserInfo User::getUserById(int userId)
     }
 
     QSqlQuery query(db);
-    query.prepare("SELECT id, username, full_name, role, is_active "
-                  "FROM users WHERE id = :id");
+    query.prepare(
+        "SELECT user_id, username, password_hash, role, status, last_login, "
+        "creator_user_id, created_at, updated_at "
+        "FROM users WHERE user_id = :id"
+    );
     query.bindValue(":id", userId);
 
     if (query.exec() && query.next()) {
-        userInfo.id = query.value("id").toInt();
+        userInfo.user_id = query.value("user_id").toInt();
         userInfo.username = query.value("username").toString();
-        userInfo.fullName = query.value("full_name").toString();
+        userInfo.password_hash = query.value("password_hash").toString();
         userInfo.role = query.value("role").toString();
-        userInfo.isActive = query.value("is_active").toBool();
+        userInfo.status = query.value("status").toInt();
+        userInfo.last_login = query.value("last_login").toDateTime();
+        userInfo.creator_user_id = query.value("creator_user_id").toInt();
+        userInfo.created_at = query.value("created_at").toDateTime();
+        userInfo.updated_at = query.value("updated_at").toDateTime();
     }
 
     return userInfo;
@@ -102,16 +106,23 @@ UserInfo User::getUserByUsername(const QString& username)
     }
 
     QSqlQuery query(db);
-    query.prepare("SELECT id, username, full_name, role, is_active "
-                  "FROM users WHERE username = :username");
+    query.prepare(
+        "SELECT user_id, username, password_hash, role, status, last_login, "
+        "creator_user_id, created_at, updated_at "
+        "FROM users WHERE username = :username"
+    );
     query.bindValue(":username", username);
 
     if (query.exec() && query.next()) {
-        userInfo.id = query.value("id").toInt();
+        userInfo.user_id = query.value("user_id").toInt();
         userInfo.username = query.value("username").toString();
-        userInfo.fullName = query.value("full_name").toString();
+        userInfo.password_hash = query.value("password_hash").toString();
         userInfo.role = query.value("role").toString();
-        userInfo.isActive = query.value("is_active").toBool();
+        userInfo.status = query.value("status").toInt();
+        userInfo.last_login = query.value("last_login").toDateTime();
+        userInfo.creator_user_id = query.value("creator_user_id").toInt();
+        userInfo.created_at = query.value("created_at").toDateTime();
+        userInfo.updated_at = query.value("updated_at").toDateTime();
     }
 
     return userInfo;
@@ -125,7 +136,7 @@ bool User::updateLastLogin(int userId)
     if (!db.isOpen()) return false;
 
     QSqlQuery query(db);
-    query.prepare("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = :id");
+    query.prepare("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE user_id = :id");
     query.bindValue(":id", userId);
 
     if (!query.exec()) {
@@ -141,6 +152,6 @@ QString User::hashPassword(const QString& password)
     QByteArray hash = QCryptographicHash::hash(
         password.toUtf8(),
         QCryptographicHash::Sha256
-        );
+    );
     return QString(hash.toHex());
 }

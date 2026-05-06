@@ -8,7 +8,7 @@
 #include <QMessageBox>
 #include <qtablewidget>
 
-#include "../Common/models.h"
+#include "models.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {

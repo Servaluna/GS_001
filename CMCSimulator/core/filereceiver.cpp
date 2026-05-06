@@ -213,18 +213,17 @@ void FileReceiver::handleFileStart(ReceiveSession* session, const QByteArray& pa
     // 读取文件大小
     stream >> session->fileSize;
 
-    // 读取MD5（暂存，验证时使用）
-    quint16 md5Size;
-    stream >> md5Size;
-    QByteArray expectedMd5(md5Size, Qt::Uninitialized);
-    stream.readRawData(expectedMd5.data(), md5Size);
-    QString expectedMd5Str = QString::fromUtf8(expectedMd5);
+    quint16 sha256Size;
+    stream >> sha256Size;
+    QByteArray expectedSha256(sha256Size, Qt::Uninitialized);
+    stream.readRawData(expectedSha256.data(), sha256Size);
+    session->expectedSha256 = QString::fromUtf8(expectedSha256);
 
     qDebug() << "FileReceiver: FileStart - taskId:" << session->taskId
              << "targetDevice:" << session->targetDeviceId
              << "fileName:" << session->fileName
              << "fileSize:" << session->fileSize
-             << "md5:" << expectedMd5Str;
+             << "sha256:" << session->expectedSha256;
 
     // 检查文件大小限制
     if (session->fileSize > MAX_FILE_SIZE) {
@@ -245,8 +244,7 @@ void FileReceiver::handleFileStart(ReceiveSession* session, const QByteArray& pa
         return;
     }
 
-    // 初始化MD5计算器
-    session->hash = new QCryptographicHash(QCryptographicHash::Md5);
+    session->hash = new QCryptographicHash(QCryptographicHash::Sha256);
     session->receivedBytes = 0;
     session->isActive = true;
 
@@ -275,7 +273,7 @@ void FileReceiver::handleFileData(ReceiveSession* session, const QByteArray& pay
         return;
     }
 
-    // 更新MD5
+    // 更新 SHA-256
     session->hash->addData(payload);
 
     // 更新进度
@@ -308,14 +306,19 @@ void FileReceiver::handleFileEnd(ReceiveSession* session)
         return;
     }
 
-    // 完成MD5计算
-    QByteArray actualMd5 = session->hash->result().toHex();
+    QByteArray actualSha256 = session->hash->result().toHex();
     session->tempFile->close();
 
-    // 验证MD5（这里需要从FileStart中获取期望的MD5）
-    // 简化：实际应用中需要在session中保存期望的MD5
+    if (QString::fromUtf8(actualSha256).compare(session->expectedSha256, Qt::CaseInsensitive) != 0) {
+        QString error = QString("文件 SHA-256 不匹配: 收到 %1, 期望 %2")
+                            .arg(QString::fromUtf8(actualSha256), session->expectedSha256);
+        qWarning() << "FileReceiver:" << error;
+        sendFileReceiveResult(session, false, error);
+        cleanupSession(session);
+        return;
+    }
 
-    qDebug() << "FileReceiver: File received successfully, MD5:" << actualMd5;
+    qDebug() << "FileReceiver: File received successfully, SHA-256:" << actualSha256;
 
     // 通知地面站接收成功
     sendFileReceiveResult(session, true, "文件接收成功");
@@ -414,6 +417,7 @@ FileReceiver::ReceiveSession* FileReceiver::createSession(QTcpSocket* socket)
     session->isActive = false;
     session->receivedBytes = 0;
     session->fileSize = 0;
+    session->expectedSha256.clear();
     session->tempFile = nullptr;
     session->hash = nullptr;
     session->timeoutTimer = nullptr;

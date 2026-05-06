@@ -120,9 +120,9 @@ void ServerConnector::onReadyRead()
 
             // 更新活跃时间
             m_lastActiveTime = QDateTime::currentMSecsSinceEpoch();
-            DEBUG_LOCATION << "会话：" << m_socket << "lastActiveTime:" << m_lastActiveTime;
+            DEBUG_LOCATION << "Session" << m_socket << "lastActiveTime:" << m_lastActiveTime;
 
-            //选择对应的处理函数
+            // 选择对应的处理函数
             switch (msg.type) {
             case MessageType::LoginResponse:
                 handleLoginResponse(msg);
@@ -131,7 +131,7 @@ void ServerConnector::onReadyRead()
 
             case MessageType::Error: {
                 QString errorMsg = msg.data["error"].toString();
-                if (errorMsg.isEmpty()) errorMsg = "未知服务器错误";
+                if (errorMsg.isEmpty()) errorMsg = "Unknown server error";
                 emit errorOccurred(errorMsg);
                 break;
             }
@@ -148,7 +148,7 @@ void ServerConnector::onReadyRead()
 void ServerConnector::loginRequest(const QString& username, const QString& password)
 {
     if (!isConnected()) {
-        emit errorOccurred("未连接到服务器");
+        emit errorOccurred("Not connected to server");
         return;
     }
 
@@ -162,9 +162,24 @@ void ServerConnector::loginRequest(const QString& username, const QString& passw
 
     sendMessage(m_socket, reqMsg);
 
-    DEBUG_LOCATION << "发送登录请求:" << username
+    DEBUG_LOCATION << "发送登录请求" << username
                    << "reqMsg.type: " << reqMsg.type
                    << "reqMsg.data: " << reqMsg.data;
+}
+
+bool ServerConnector::fileDownloadRequest(QString fileId, qint64 offset)
+{
+    if (!isConnected()) {
+        emit errorOccurred("Not connected to server");
+        return false;
+    }
+
+    QJsonObject data;
+    data["fileId"] = fileId;
+    data["offset"] = offset;
+
+    Message reqMsg(MessageType::GetTaskFile, data);
+    return sendMessage(m_socket, reqMsg);
 }
 
 void ServerConnector::handleLoginResponse(const Message& respMsg)

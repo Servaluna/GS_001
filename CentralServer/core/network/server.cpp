@@ -189,7 +189,6 @@ void Server::onClientFinished(ClientHandler* handler)
         // 更新 UI
         updateClientList();
     }
-    // handler 会自己 deleteLater，这里不需要 delete
 }
 
 void Server::updateClientList()

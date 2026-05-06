@@ -1,7 +1,7 @@
 #ifndef CLIENTHANDLER_H
 #define CLIENTHANDLER_H
 
-#include "../Common/protocol.h"
+#include "protocol.h"
 
 #include <QObject>
 #include <QTcpSocket>

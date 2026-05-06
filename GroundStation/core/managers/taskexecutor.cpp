@@ -1,11 +1,11 @@
-#include "taskexecutor.h"
+﻿#include "taskexecutor.h"
 #include "filetransfermanager.h"
 #include "../network/deviceconnector.h"
 #include "../localdatabase/localdao.h"
 
-// 常量定义
-constexpr int PROCESS_INTERVAL_MS = 500;   // 任务处理间隔
-constexpr int SPEED_UPDATE_INTERVAL_MS = 1000; // 速度更新间隔
+// 甯搁噺瀹氫箟
+constexpr int PROCESS_INTERVAL_MS = 500;   // 浠诲姟澶勭悊闂撮殧
+constexpr int SPEED_UPDATE_INTERVAL_MS = 1000; // 閫熷害鏇存柊闂撮殧
 
 TaskExecutor::TaskExecutor(QObject *parent)
     : QObject{parent}
@@ -40,7 +40,7 @@ bool TaskExecutor::init(LocalDAO* dao,
     m_fileManager = fileTransferManager;
     m_deviceConnector = deviceConnector;
 
-    // 连接文件管理器信号
+    // 杩炴帴鏂囦欢绠＄悊鍣ㄤ俊鍙?
     connect(m_fileManager, &FileTransferManager::progressUpdated,
             this, &TaskExecutor::onDownloadProgress);
     connect(m_fileManager, &FileTransferManager::downloadFinished,
@@ -48,17 +48,19 @@ bool TaskExecutor::init(LocalDAO* dao,
     connect(m_fileManager, &FileTransferManager::downloadFailed,
             this, &TaskExecutor::onDownloadFailed);
 
-    // 连接设备连接器信号
+    // 杩炴帴璁惧杩炴帴鍣ㄤ俊鍙?
     connect(m_deviceConnector, &DeviceConnector::sendFinished,
             this, &TaskExecutor::onDeviceSendFinished);
     connect(m_deviceConnector, &DeviceConnector::installResult,
-            this, &TaskExecutor::onDeviceInstallResult);
+            this, [this](const QString& taskId, const QString&, bool success, const QString& message) {
+                onDeviceInstallResult(taskId, success, message);
+            });
 
-    // 创建处理定时器
+    // 鍒涘缓澶勭悊瀹氭椂鍣?
     m_processTimer = new QTimer(this);
     connect(m_processTimer, &QTimer::timeout, this, &TaskExecutor::onProcessNextTask);
 
-    // 创建速度更新定时器
+    // 鍒涘缓閫熷害鏇存柊瀹氭椂鍣?
     m_speedUpdateTimer = new QTimer(this);
     connect(m_speedUpdateTimer, &QTimer::timeout, this, &TaskExecutor::onUpdateDownloadSpeed);
 
@@ -81,10 +83,10 @@ void TaskExecutor::start()
 
     m_isRunning = true;
 
-    // 加载可恢复的任务（程序异常退出后恢复）
+    // 鍔犺浇鍙仮澶嶇殑浠诲姟锛堢▼搴忓紓甯搁€€鍑哄悗鎭㈠锛?
     loadResumableTasks();
 
-    // 启动处理定时器
+    // 鍚姩澶勭悊瀹氭椂鍣?
     m_processTimer->start(PROCESS_INTERVAL_MS);
 
     qDebug() << "TaskExecutor started, pending tasks:" << m_taskQueue.size();
@@ -107,9 +109,9 @@ void TaskExecutor::stop()
         m_speedUpdateTimer->stop();
     }
 
-    // 如果有正在下载的任务，暂停但不取消（以便下次恢复）
+    // 濡傛灉鏈夋鍦ㄤ笅杞界殑浠诲姟锛屾殏鍋滀絾涓嶅彇娑堬紙浠ヤ究涓嬫鎭㈠锛?
     if (m_currentTask.isValid() && m_currentStep == CurrentSteps::Downloading) {
-        m_fileManager->pauseDownload(m_currentTask.taskId);
+        m_fileManager->pauseDownload(m_currentTask.task_id);
     }
 
     qDebug() << "TaskExecutor stopped";
@@ -122,14 +124,14 @@ bool TaskExecutor::executeTask(const QString& taskId)
         return false;
     }
 
-    // 从本地数据库获取任务
+    // 浠庢湰鍦版暟鎹簱鑾峰彇浠诲姟
     auto task = m_dao->getTransferringTaskById(taskId);
-    if (task.taskId.isEmpty()) {
+    if (task.task_id.isEmpty()) {
         qWarning() << "Task not found in local database:" << taskId;
         return false;
     }
 
-    // 检查任务状态
+    // 妫€鏌ヤ换鍔＄姸鎬?
     if (task.status == TransferStatus::Succeeded) {
         qWarning() << "Task already completed:" << taskId;
         return false;
@@ -142,19 +144,19 @@ bool TaskExecutor::executeTask(const QString& taskId)
         return false;
     }
 
-    // 重置任务状态（支持重试）
+    // 閲嶇疆浠诲姟鐘舵€侊紙鏀寔閲嶈瘯锛?
     task.status = TransferStatus::Pending;
-    task.steps = "等待执行";
-    task.lastError.clear();
-    task.transferredBytes = 0;
-    task.lastUpdateTime = QDateTime::currentDateTime();
+    task.current_step = CurrentSteps::Idle;
+    task.error_message.clear();
+    task.transferred_bytes = 0;
+    task.last_update_time = QDateTime::currentDateTime();
 
     if (!m_dao->update(task)) {
         qCritical() << "Failed to reset task status:" << taskId;
         return false;
     }
 
-    // 加入队列
+    // 鍔犲叆闃熷垪
     m_taskQueue.enqueue(task);
 
     qDebug() << "Task queued for execution:" << taskId;
@@ -165,26 +167,26 @@ bool TaskExecutor::executeTask(const QString& taskId)
 
 bool TaskExecutor::cancelTask(const QString& taskId)
 {
-    // 如果是当前正在执行的任务
-    if (m_currentTask.isValid() && m_currentTask.taskId == taskId) {
-        // 取消正在进行的下载
+    // 濡傛灉鏄綋鍓嶆鍦ㄦ墽琛岀殑浠诲姟
+    if (m_currentTask.isValid() && m_currentTask.task_id == taskId) {
+        // 鍙栨秷姝ｅ湪杩涜鐨勪笅杞?
         if (m_currentStep == CurrentSteps::Downloading) {
             m_fileManager->cancelDownload(taskId);
         }
 
-        // 标记任务为已取消
+        // 鏍囪浠诲姟涓哄凡鍙栨秷
         updateLocalTaskStatus(taskId, TransferStatus::Cancelled, CurrentSteps::Cancelled, "用户取消");
 
-        // 清理当前任务
+        // 娓呯悊褰撳墠浠诲姟
         m_currentTask = TransferringTask();
         m_currentStep = CurrentSteps::Idle;
         m_retryCount = 0;
 
         emit taskFinished(taskId, false, "任务已取消");
     } else {
-        // 从队列中移除
+        // 浠庨槦鍒椾腑绉婚櫎
         for (int i = 0; i < m_taskQueue.size(); ++i) {
-            if (m_taskQueue[i].taskId == taskId) {
+            if (m_taskQueue[i].task_id == taskId) {
                 m_taskQueue.removeAt(i);
                 updateLocalTaskStatus(taskId, TransferStatus::Cancelled, CurrentSteps::Cancelled, "用户取消");
                 break;
@@ -199,18 +201,18 @@ bool TaskExecutor::cancelTask(const QString& taskId)
 void TaskExecutor::pauseCurrentTask()
 {
     if (m_currentStep == CurrentSteps::Downloading) {
-        m_fileManager->pauseDownload(m_currentTask.taskId);
-        updateLocalTaskStatus(m_currentTask.taskId, TransferStatus::Paused, CurrentSteps::Paused);
-        qDebug() << "Task paused:" << m_currentTask.taskId;
+        m_fileManager->pauseDownload(m_currentTask.task_id);
+        updateLocalTaskStatus(m_currentTask.task_id, TransferStatus::Paused, CurrentSteps::Paused);
+        qDebug() << "Task paused:" << m_currentTask.task_id;
     }
 }
 
 void TaskExecutor::resumeCurrentTask()
 {
     if (m_currentStep == CurrentSteps::Downloading) {
-        m_fileManager->resumeDownload(m_currentTask.taskId);
-        updateLocalTaskStatus(m_currentTask.taskId, TransferStatus::Downloading, CurrentSteps::Downloading);
-        qDebug() << "Task resumed:" << m_currentTask.taskId;
+        m_fileManager->resumeDownload(m_currentTask.task_id);
+        updateLocalTaskStatus(m_currentTask.task_id, TransferStatus::Downloading, CurrentSteps::Downloading);
+        qDebug() << "Task resumed:" << m_currentTask.task_id;
     }
 }
 
@@ -229,56 +231,56 @@ bool TaskExecutor::isBusy() const
     return m_currentTask.isValid();
 }
 
-// ==================== 私有槽函数 ====================
+// ==================== 绉佹湁妲藉嚱鏁?====================
 
 void TaskExecutor::onDownloadProgress(QString taskId, qint64 transferred, qint64 total, int progressPercent)
 {
-    if (!m_currentTask.isValid() || m_currentTask.taskId != taskId) {
+    if (!m_currentTask.isValid() || m_currentTask.task_id != taskId) {
         return;
     }
 
-    // 更新本地数据库
+    // 鏇存柊鏈湴鏁版嵁搴?
     updateLocalTaskProgress(taskId, transferred, progressPercent);
 
-    // 计算速度并发送信号
+    // 璁＄畻閫熷害骞跺彂閫佷俊鍙?
     calculateSpeed(transferred);
     emit taskProgressUpdated(taskId, "下载中", progressPercent, m_currentSpeed);
 }
 
 void TaskExecutor::onDownloadFinished(QString taskId, const QString& localPath, bool success)
 {
-    if (!m_currentTask.isValid() || m_currentTask.taskId != taskId) {
+    if (!m_currentTask.isValid() || m_currentTask.task_id != taskId) {
         return;
     }
 
     if (success) {
         qDebug() << "Download completed for task:" << taskId << ", file:" << localPath;
-        updateLocalTaskStatus(taskId, TransferStatus::Downloading, CurrentSteps::Steps);
+        updateLocalTaskStatus(taskId, TransferStatus::Downloading, CurrentSteps::Sending);
 
-        // 停止速度计算
+        // 鍋滄閫熷害璁＄畻
         m_speedUpdateTimer->stop();
 
-        // 开始发送到设备
+        // 寮€濮嬪彂閫佸埌璁惧
         startSendToDevice(taskId, localPath);
     } else {
         qDebug() << "Download verification failed for task:" << taskId;
-        onDownloadFailed(taskId, 1002, "文件MD5校验失败");
+        onDownloadFailed(taskId, 1002, "文件 SHA-256 校验失败");
     }
 }
 
 void TaskExecutor::onDownloadFailed(QString taskId, int errorCode, const QString& errorMessage)
 {
-    if (!m_currentTask.isValid() || m_currentTask.taskId != taskId) {
+    if (!m_currentTask.isValid() || m_currentTask.task_id != taskId) {
         return;
     }
 
     qWarning() << "Download failed for task:" << taskId
                << ", error:" << errorCode << "," << errorMessage;
 
-    // 停止速度计算
+    // 鍋滄閫熷害璁＄畻
     m_speedUpdateTimer->stop();
 
-    // 重试逻辑
+    // 閲嶈瘯閫昏緫
     if (m_retryCount < MAX_RETRY_COUNT) {
         m_retryCount++;
         qDebug() << "Retrying download, attempt" << m_retryCount << "of" << MAX_RETRY_COUNT;
@@ -291,11 +293,11 @@ void TaskExecutor::onDownloadFailed(QString taskId, int errorCode, const QString
         return;
     }
 
-    // 重试失败，标记任务失败
+    // 閲嶈瘯澶辫触锛屾爣璁颁换鍔″け璐?
     QString fullError = QString("下载失败(重试%1次): %2").arg(MAX_RETRY_COUNT).arg(errorMessage);
     markTaskComplete(taskId, false, fullError);
 
-    // 清理并执行下一个任务
+    // 娓呯悊骞舵墽琛屼笅涓€涓换鍔?
     m_currentTask = TransferringTask();
     m_currentStep = CurrentSteps::Idle;
     m_retryCount = 0;
@@ -305,7 +307,7 @@ void TaskExecutor::onDownloadFailed(QString taskId, int errorCode, const QString
 
 void TaskExecutor::onDeviceSendFinished(QString taskId, bool success, const QString& message)
 {
-    if (!m_currentTask.isValid() || m_currentTask.taskId != taskId) {
+    if (!m_currentTask.isValid() || m_currentTask.task_id != taskId) {
         return;
     }
 
@@ -327,7 +329,7 @@ void TaskExecutor::onDeviceSendFinished(QString taskId, bool success, const QStr
 
 void TaskExecutor::onDeviceInstallResult(QString taskId, bool success, const QString& message)
 {
-    if (!m_currentTask.isValid() || m_currentTask.taskId != taskId) {
+    if (!m_currentTask.isValid() || m_currentTask.task_id != taskId) {
         return;
     }
 
@@ -339,7 +341,7 @@ void TaskExecutor::onDeviceInstallResult(QString taskId, bool success, const QSt
         markTaskComplete(taskId, false, QString("设备安装失败: %1").arg(message));
     }
 
-    // 清理并执行下一个任务
+    // 娓呯悊骞舵墽琛屼笅涓€涓换鍔?
     m_currentTask = TransferringTask();
     m_currentStep = CurrentSteps::Idle;
     m_retryCount = 0;
@@ -353,7 +355,7 @@ void TaskExecutor::onProcessNextTask()
         return;
     }
 
-    // 如果当前有任务在执行，不做任何事
+    // 濡傛灉褰撳墠鏈変换鍔″湪鎵ц锛屼笉鍋氫换浣曚簨
     if (m_currentTask.isValid()) {
         return;
     }
@@ -363,17 +365,17 @@ void TaskExecutor::onProcessNextTask()
 
 void TaskExecutor::onUpdateDownloadSpeed()
 {
-    // 速度已经在 calculateSpeed 中计算，这里只需要发射信号
+    // 閫熷害宸茬粡鍦?calculateSpeed 涓绠楋紝杩欓噷鍙渶瑕佸彂灏勪俊鍙?
     if (m_currentTask.isValid() && m_currentStep == CurrentSteps::Downloading) {
-        auto task = m_dao->getTransferringTaskById(m_currentTask.taskId);
+        auto task = m_dao->getTransferringTaskById(m_currentTask.task_id);
         if (task.isValid()) {
-            emit taskProgressUpdated(m_currentTask.taskId, "下载中",
+            emit taskProgressUpdated(m_currentTask.task_id, "下载中",
                                      task.getProgressPercent(), m_currentSpeed);
         }
     }
 }
 
-// ==================== 私有方法 ====================
+// ==================== 绉佹湁鏂规硶 ====================
 
 void TaskExecutor::processNextTask()
 {
@@ -381,44 +383,44 @@ void TaskExecutor::processNextTask()
         return;
     }
 
-    // 取出下一个任务
+    // 鍙栧嚭涓嬩竴涓换鍔?
     TransferringTask nextTask = m_taskQueue.dequeue();
     m_currentTask = nextTask;
     m_currentStep = CurrentSteps::Downloading;
     m_retryCount = 0;
 
-    qDebug() << "Starting task:" << nextTask.taskId << "-" << nextTask.description;
-    emit taskStarted(nextTask.taskId, nextTask.description);
+    qDebug() << "Starting task:" << nextTask.task_id << "-" << nextTask.description;
+    emit taskStarted(nextTask.task_id, nextTask.description);
 
-    // 开始下载
+    // 寮€濮嬩笅杞?
     startDownloadTask(nextTask);
 }
 
 void TaskExecutor::startDownloadTask(const TransferringTask& task)
 {
-    // 更新状态为下载中
-    updateLocalTaskStatus(task.taskId, TransferStatus::Downloading, "下载中");
-    emit taskProgressUpdated(task.taskId, "下载中", 0);
+    // 鏇存柊鐘舵€佷负涓嬭浇涓?
+    updateLocalTaskStatus(task.task_id, TransferStatus::Downloading, CurrentSteps::Downloading);
+    emit taskProgressUpdated(task.task_id, "下载中", 0);
 
-    // 重置速度统计
-    m_lastTransferredBytes = task.transferredBytes;
+    // 閲嶇疆閫熷害缁熻
+    m_lastTransferredBytes = task.transferred_bytes;
     m_speedTimer.start();
     m_speedUpdateTimer->start(SPEED_UPDATE_INTERVAL_MS);
 
-    // 启动下载
+    // 鍚姩涓嬭浇
     if (!m_fileManager->startDownload(task)) {
-        qCritical() << "Failed to start download for task:" << task.taskId;
-        onDownloadFailed(task.taskId, 1000, "无法启动下载");
+        qCritical() << "Failed to start download for task:" << task.task_id;
+        onDownloadFailed(task.task_id, 1000, "无法启动下载");
     }
 }
 
 void TaskExecutor::startSendToDevice(const QString& taskId, const QString& localPath)
 {
     m_currentStep = CurrentSteps::Sending;
-    updateLocalTaskStatus(taskId, TransferStatus::Pending, "发送到设备");
+    updateLocalTaskStatus(taskId, TransferStatus::Uploading, CurrentSteps::Sending);
     emit taskProgressUpdated(taskId, "发送中", 70);
 
-    // 获取任务详情
+    // 鑾峰彇浠诲姟璇︽儏
     auto task = m_dao->getTransferringTaskById(taskId);
     if (!task.isValid()) {
         qCritical() << "Task not found:" << taskId;
@@ -426,15 +428,15 @@ void TaskExecutor::startSendToDevice(const QString& taskId, const QString& local
         return;
     }
 
-    // 检查设备是否在线
-    if (!isDeviceOnline(task.targetDeviceId)) {
-        qWarning() << "Device offline:" << task.targetDeviceId;
+    // 妫€鏌ヨ澶囨槸鍚﹀湪绾?
+    if (!isDeviceOnline(task.target_device_id)) {
+        qWarning() << "Device offline:" << task.target_device_id;
         onDeviceSendFinished(taskId, false, "设备离线，请检查设备连接");
         return;
     }
 
-    // 发送文件到设备
-    m_deviceConnector->sendFile(taskId, localPath, task.fileName, task.fileMd5);
+    // 鍙戦€佹枃浠跺埌璁惧
+    m_deviceConnector->sendFileToDevice(taskId, task.target_device_id, localPath, task.file_name, task.file_sha256);
 }
 
 void TaskExecutor::updateLocalTaskStatus(const QString& taskId,
@@ -449,11 +451,11 @@ void TaskExecutor::updateLocalTaskStatus(const QString& taskId,
     }
 
     task.status = status;
-    task.steps = steps;
+    task.current_step = steps;
     if (!errorMessage.isEmpty()) {
-        task.lastError = errorMessage;
+        task.error_message = errorMessage;
     }
-    task.lastUpdateTime = QDateTime::currentDateTime();
+    task.last_update_time = QDateTime::currentDateTime();
 
     if (!m_dao->update(task)) {
         qCritical() << "Failed to update task status:" << taskId;
@@ -469,8 +471,8 @@ void TaskExecutor::updateLocalTaskProgress(const QString& taskId,
         return;
     }
 
-    task.transferredBytes = transferredBytes;
-    task.lastUpdateTime = QDateTime::currentDateTime();
+    task.transferred_bytes = transferredBytes;
+    task.last_update_time = QDateTime::currentDateTime();
 
     if (!m_dao->update(task)) {
         qCritical() << "Failed to update task progress:" << taskId;
@@ -486,20 +488,17 @@ void TaskExecutor::markTaskComplete(const QString& taskId, bool success, const Q
     }
 
     if (success) {
-        task.status = TransferStatus::Completed;
-        task.steps = "完成";
-        task.lastError.clear();
-        task.needSync = true;  // 标记需要同步到中心服务器
+        task.status = TransferStatus::Succeeded;
+        task.current_step = CurrentSteps::Completed;
+        task.error_message.clear();
     } else {
         task.status = TransferStatus::Failed;
-        task.steps = "失败";
-        task.lastError = message;
-        // 失败的任务也需要同步，让工程师知道失败原因
-        task.needSync = true;
+        task.current_step = CurrentSteps::Failed;
+        task.error_message = message;
     }
 
-    task.completeTime = QDateTime::currentDateTime();
-    task.lastUpdateTime = QDateTime::currentDateTime();
+    task.end_time = QDateTime::currentDateTime();
+    task.last_update_time = QDateTime::currentDateTime();
 
     if (!m_dao->update(task)) {
         qCritical() << "Failed to mark task complete:" << taskId;
@@ -510,29 +509,29 @@ void TaskExecutor::markTaskComplete(const QString& taskId, bool success, const Q
 
 void TaskExecutor::loadResumableTasks()
 {
-    // 加载所有未完成的任务（程序异常退出时留下的）
+    // 鍔犺浇鎵€鏈夋湭瀹屾垚鐨勪换鍔★紙绋嬪簭寮傚父閫€鍑烘椂鐣欎笅鐨勶級
     auto downloadingTasks = m_dao->getByStatus(TransferStatus::Downloading);
-    auto sendingTasks = m_dao->getByStatus(TransferStatus::Sending);
+    auto sendingTasks = m_dao->getByStatus(TransferStatus::Uploading);
     auto installingTasks = m_dao->getByStatus(TransferStatus::Installing);
     auto pendingTasks = m_dao->getByStatus(TransferStatus::Pending);
 
-    // 将未完成的任务重置为 Pending 状态，重新加入队列
+    // 灏嗘湭瀹屾垚鐨勪换鍔￠噸缃负 Pending 鐘舵€侊紝閲嶆柊鍔犲叆闃熷垪
     auto resetAndEnqueue = [this](const QList<TransferringTask>& tasks) {
         for (auto task : tasks) {
-            if (task.status == TransferStatus::Downloading && task.transferredBytes > 0) {
-                // 有部分下载的任务，保留已下载字节数（断点续传）
-                qDebug() << "Resuming partial download:" << task.taskId
-                         << "transferred:" << task.transferredBytes;
-            } else if (task.status == TransferStatus::Sending ||
+            if (task.status == TransferStatus::Downloading && task.transferred_bytes > 0) {
+                // 鏈夐儴鍒嗕笅杞界殑浠诲姟锛屼繚鐣欏凡涓嬭浇瀛楄妭鏁帮紙鏂偣缁紶锛?
+                qDebug() << "Resuming partial download:" << task.task_id
+                         << "transferred:" << task.transferred_bytes;
+            } else if (task.status == TransferStatus::Uploading ||
                        task.status == TransferStatus::Installing) {
-                // 发送/安装中的任务，重置为待执行（这些操作不可恢复）
-                task.transferredBytes = 0;
+                // 鍙戦€?瀹夎涓殑浠诲姟锛岄噸缃负寰呮墽琛岋紙杩欎簺鎿嶄綔涓嶅彲鎭㈠锛?
+                task.transferred_bytes = 0;
             }
 
             task.status = TransferStatus::Pending;
-            task.steps = "等待执行";
-            task.lastError.clear();
-            task.lastUpdateTime = QDateTime::currentDateTime();
+            task.current_step = CurrentSteps::Idle;
+            task.error_message.clear();
+            task.last_update_time = QDateTime::currentDateTime();
 
             if (m_dao->update(task)) {
                 m_taskQueue.enqueue(task);
@@ -550,7 +549,7 @@ void TaskExecutor::loadResumableTasks()
 
 bool TaskExecutor::isDeviceOnline(const QString& deviceId)
 {
-    return m_deviceConnector->isDeviceConnected(deviceId);
+    return m_deviceConnector->isDeviceOnline(deviceId);
 }
 
 void TaskExecutor::calculateSpeed(qint64 bytesTransferred)

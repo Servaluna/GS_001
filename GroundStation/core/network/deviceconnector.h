@@ -32,7 +32,7 @@ public:
                           const QString& targetDeviceId,
                           const QString& localPath,
                           const QString& fileName,
-                          const QString& md5);
+                          const QString& sha256);
 
     DeviceStatus getDeviceStatus(const QString& deviceId) const;
     QList<DeviceStatus> getAllDeviceStatus() const;
@@ -56,8 +56,8 @@ private slots:
 
     void onSendFileData();
 
-    void on_btnCancel_clicked();
-    void on_btnConnect_clicked();
+    // void on_btnCancel_clicked();
+    // void on_btnConnect_clicked();
 
 private:
     // ========== 协议定义 ==========
@@ -84,7 +84,7 @@ private:
                        const QString& targetDeviceId,
                        const QString& fileName,
                        qint64 fileSize,
-                       const QString& md5);
+                       const QString& sha256);
     bool sendFileEnd();
 
     QByteArray buildPacket(Command cmd, const QByteArray& payload);
@@ -100,7 +100,7 @@ private:
     // ========== 辅助方法 ==========
 
     void cleanupFileTransfer();
-    void updateDeviceStatus(const DeviceStatus& status, bool isFullUpdate);
+    // void updateDeviceStatus(const DeviceStatus& status, bool isFullUpdate);
 
 private:
     QTcpSocket* m_socket;
@@ -118,7 +118,7 @@ private:
     QFile* m_currentFile;
     qint64 m_fileSize;
     qint64 m_sentBytes;
-    QString m_fileMd5;
+    QString m_fileSha256;
 
     // ========== 配置常量 ==========
     static constexpr int SEND_BUFFER_SIZE = 64 * 1024;   // 64KB

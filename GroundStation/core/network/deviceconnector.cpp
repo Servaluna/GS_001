@@ -1,4 +1,4 @@
-#include "deviceconnector.h"
+﻿#include "deviceconnector.h"
 
 #include <QTimer>
 #include <QDateTime>
@@ -14,7 +14,7 @@ DeviceConnector::DeviceConnector(QObject *parent)
 {
     // setAttribute(Qt::WA_DeleteOnClose);
 
-    // this->setWindowTitle("连接设备");
+    // this->setWindowTitle("杩炴帴璁惧");
 
     m_socket = new QTcpSocket(this);
 
@@ -69,28 +69,28 @@ bool DeviceConnector::isConnected() const
     return m_isConnected;
 }
 
-// ==================== 文件传输 ====================
+// ==================== 鏂囦欢浼犺緭 ====================
 
 void DeviceConnector::sendFileToDevice(const QString& taskId,
                                        const QString& targetDeviceId,
                                        const QString& localPath,
                                        const QString& fileName,
-                                       const QString& md5)
+                                       const QString& sha256)
 {
     if (!m_isConnected) {
         qWarning() << "DeviceConnector: Not connected to CMC, cannot send file";
-        emit sendFinished(taskId, false, "未连接到CMC");
+        emit sendFinished(taskId, false, "未连接到 CMC");
         return;
     }
 
-    // 检查目标设备是否在线（从本地缓存查询）
+    // 妫€鏌ョ洰鏍囪澶囨槸鍚﹀湪绾匡紙浠庢湰鍦扮紦瀛樻煡璇級
     if (!isDeviceOnline(targetDeviceId)) {
         qWarning() << "DeviceConnector: Target device not online:" << targetDeviceId;
         emit sendFinished(taskId, false, QString("目标设备 %1 不在线").arg(targetDeviceId));
         return;
     }
 
-    // 检查本地文件
+    // 妫€鏌ユ湰鍦版枃浠?
     QFile* file = new QFile(localPath, this);
     if (!file->exists()) {
         qWarning() << "DeviceConnector: File not found:" << localPath;
@@ -106,36 +106,36 @@ void DeviceConnector::sendFileToDevice(const QString& taskId,
         return;
     }
 
-    // 清理之前的传输（正常情况下应该已经清理了）
+    // 娓呯悊涔嬪墠鐨勪紶杈擄紙姝ｅ父鎯呭喌涓嬪簲璇ュ凡缁忔竻鐞嗕簡锛?
     cleanupFileTransfer();
 
-    // 设置当前传输上下文
+    // 璁剧疆褰撳墠浼犺緭涓婁笅鏂?
     m_currentTaskId = taskId;
     m_currentTargetDeviceId = targetDeviceId;
     m_currentFile = file;
     m_fileSize = file->size();
     m_sentBytes = 0;
-    m_fileMd5 = md5;
+    m_fileSha256 = sha256;
 
     qDebug() << "DeviceConnector: Starting file send - taskId:" << taskId
              << "targetDevice:" << targetDeviceId
              << "fileName:" << fileName
              << "fileSize:" << m_fileSize
-             << "md5:" << md5;
+             << "sha256:" << sha256;
 
     // 发送文件开始命令
-    if (!sendFileStart(taskId, targetDeviceId, fileName, m_fileSize, md5)) {
+    if (!sendFileStart(taskId, targetDeviceId, fileName, m_fileSize, sha256)) {
         qCritical() << "DeviceConnector: Failed to send FileStart command";
         emit sendFinished(taskId, false, "发送文件开始命令失败");
         cleanupFileTransfer();
         return;
     }
 
-    // 开始发送文件数据（异步分片发送）
+    // 寮€濮嬪彂閫佹枃浠舵暟鎹紙寮傛鍒嗙墖鍙戦€侊級
     QTimer::singleShot(SEND_INTERVAL_MS, this, &DeviceConnector::onSendFileData);
 }
 
-// ==================== 设备状态查询 ====================
+// ==================== 璁惧鐘舵€佹煡璇?====================
 
 DeviceStatus DeviceConnector::getDeviceStatus(const QString& deviceId) const
 {
@@ -156,7 +156,7 @@ bool DeviceConnector::isDeviceOnline(const QString& deviceId) const
     return false;
 }
 
-// ==================== 私有槽函数 ====================
+// ==================== 绉佹湁妲藉嚱鏁?====================
 
 void DeviceConnector::onConnected()
 {
@@ -170,11 +170,11 @@ void DeviceConnector::onDisconnected()
     m_isConnected = false;
     qDebug() << "DeviceConnector: Disconnected from CMC";
 
-    // 清理所有状态
+    // 娓呯悊鎵€鏈夌姸鎬?
     m_deviceStatusMap.clear();
     cleanupFileTransfer();
 
-    emit cmcConnectionChanged(false, "与CMC的连接已断开");
+    emit cmcConnectionChanged(false, "涓嶤MC鐨勮繛鎺ュ凡鏂紑");
 }
 
 void DeviceConnector::onErrorOccurred(QAbstractSocket::SocketError socketError)
@@ -188,10 +188,10 @@ void DeviceConnector::onErrorOccurred(QAbstractSocket::SocketError socketError)
 
 void DeviceConnector::onReadyRead()
 {
-    // 追加数据到接收缓冲区
+    // 杩藉姞鏁版嵁鍒版帴鏀剁紦鍐插尯
     m_receiveBuffer.append(m_socket->readAll());
 
-    // 循环处理缓冲区中的所有完整数据包
+    // 寰幆澶勭悊缂撳啿鍖轰腑鐨勬墍鏈夊畬鏁存暟鎹寘
     Command cmd;
     QByteArray payload;
 
@@ -233,11 +233,11 @@ void DeviceConnector::onSendFileData()
         return;
     }
 
-    // 读取一块数据
+    // 璇诲彇涓€鍧楁暟鎹?
     QByteArray data = m_currentFile->read(SEND_BUFFER_SIZE);
 
     if (data.isEmpty()) {
-        // 文件读取完成，发送 FileEnd 命令
+        // 鏂囦欢璇诲彇瀹屾垚锛屽彂閫?FileEnd 鍛戒护
         if (m_sentBytes == m_fileSize) {
             qDebug() << "DeviceConnector: File read complete, sent:" << m_sentBytes
                      << "of" << m_fileSize;
@@ -250,7 +250,7 @@ void DeviceConnector::onSendFileData()
                 cleanupFileTransfer();
             }
         } else {
-            // 文件读取错误
+            // 鏂囦欢璇诲彇閿欒
             qCritical() << "DeviceConnector: File read error, sent:" << m_sentBytes
                         << "expected:" << m_fileSize;
             emit sendFinished(m_currentTaskId, false, "文件读取错误");
@@ -259,7 +259,7 @@ void DeviceConnector::onSendFileData()
         return;
     }
 
-    // 发送数据块
+    // 鍙戦€佹暟鎹潡
     if (sendCommand(Command::FileData, data)) {
         m_sentBytes += data.size();
         int progress = static_cast<int>((m_sentBytes * 100) / m_fileSize);
@@ -269,7 +269,7 @@ void DeviceConnector::onSendFileData()
 
         emit sendProgress(m_currentTaskId, m_sentBytes, m_fileSize, progress);
 
-        // 继续发送下一块
+        // 缁х画鍙戦€佷笅涓€鍧?
         QTimer::singleShot(SEND_INTERVAL_MS, this, &DeviceConnector::onSendFileData);
     } else {
         qCritical() << "DeviceConnector: Failed to send data chunk";
@@ -278,7 +278,7 @@ void DeviceConnector::onSendFileData()
     }
 }
 
-// ==================== 数据包发送 ====================
+// ==================== 鏁版嵁鍖呭彂閫?====================
 
 bool DeviceConnector::sendCommand(Command cmd, const QByteArray& data)
 {
@@ -303,40 +303,40 @@ bool DeviceConnector::sendFileStart(const QString& taskId,
                                     const QString& targetDeviceId,
                                     const QString& fileName,
                                     qint64 fileSize,
-                                    const QString& md5)
+                                    const QString& sha256)
 {
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
     stream.setByteOrder(QDataStream::BigEndian);
 
-    // 任务ID
+    // 浠诲姟ID
     QByteArray taskIdBytes = taskId.toUtf8();
     stream << static_cast<quint16>(taskIdBytes.size());
     stream.writeRawData(taskIdBytes.data(), taskIdBytes.size());
 
-    // 目标设备ID
+    // 鐩爣璁惧ID
     QByteArray deviceIdBytes = targetDeviceId.toUtf8();
     stream << static_cast<quint16>(deviceIdBytes.size());
     stream.writeRawData(deviceIdBytes.data(), deviceIdBytes.size());
 
-    // 文件名
+    // 鏂囦欢鍚?
     QByteArray fileNameBytes = fileName.toUtf8();
     stream << static_cast<quint16>(fileNameBytes.size());
     stream.writeRawData(fileNameBytes.data(), fileNameBytes.size());
 
-    // 文件大小
+    // 鏂囦欢澶у皬
     stream << static_cast<quint64>(fileSize);
 
-    // MD5
-    QByteArray md5Bytes = md5.toUtf8();
-    stream << static_cast<quint16>(md5Bytes.size());
-    stream.writeRawData(md5Bytes.data(), md5Bytes.size());
+    // SHA-256
+    QByteArray sha256Bytes = sha256.toUtf8();
+    stream << static_cast<quint16>(sha256Bytes.size());
+    stream.writeRawData(sha256Bytes.data(), sha256Bytes.size());
 
     qDebug() << "DeviceConnector: Sending FileStart - taskId:" << taskId
              << "targetDevice:" << targetDeviceId
              << "fileName:" << fileName
              << "size:" << fileSize
-             << "md5:" << md5;
+             << "sha256:" << sha256;
 
     return sendCommand(Command::FileStart, data);
 }
@@ -347,7 +347,7 @@ bool DeviceConnector::sendFileEnd()
     return sendCommand(Command::FileEnd);
 }
 
-// ==================== 数据包构造与解析 ====================
+// ==================== 鏁版嵁鍖呮瀯閫犱笌瑙ｆ瀽 ====================
 
 QByteArray DeviceConnector::buildPacket(Command cmd, const QByteArray& payload)
 {
@@ -355,21 +355,21 @@ QByteArray DeviceConnector::buildPacket(Command cmd, const QByteArray& payload)
     QDataStream stream(&packet, QIODevice::WriteOnly);
     stream.setByteOrder(QDataStream::BigEndian);
 
-    // 起始标志
+    // 璧峰鏍囧織
     stream << PACKET_START_MARK;
 
-    // 命令
+    // 鍛戒护
     stream << static_cast<quint8>(cmd);
 
-    // 数据长度
+    // 鏁版嵁闀垮害
     stream << static_cast<quint32>(payload.size());
 
-    // 数据
+    // 鏁版嵁
     if (!payload.isEmpty()) {
         stream.writeRawData(payload.data(), payload.size());
     }
 
-    // 校验和（异或所有字节）
+    // 鏍￠獙鍜岋紙寮傛垨鎵€鏈夊瓧鑺傦級
     quint16 checksum = 0;
     for (char c : packet) {
         checksum ^= static_cast<quint8>(c);
@@ -382,50 +382,50 @@ QByteArray DeviceConnector::buildPacket(Command cmd, const QByteArray& payload)
 bool DeviceConnector::parsePacket(const QByteArray& data, Command& cmd, QByteArray& payload)
 {
     if (data.size() < PACKET_HEADER_SIZE) {
-        return false;  // 数据不足，等待更多数据
+        return false;  // 鏁版嵁涓嶈冻锛岀瓑寰呮洿澶氭暟鎹?
     }
 
     QDataStream stream(data);
     stream.setByteOrder(QDataStream::BigEndian);
 
-    // 读取起始标志
+    // 璇诲彇璧峰鏍囧織
     quint16 startMark;
     stream >> startMark;
 
     if (startMark != PACKET_START_MARK) {
         qWarning() << "DeviceConnector: Invalid packet start mark:" << startMark;
-        // 跳过这个字节，尝试重新同步
+        // 璺宠繃杩欎釜瀛楄妭锛屽皾璇曢噸鏂板悓姝?
         m_receiveBuffer.remove(0, 1);
         return false;
     }
 
-    // 读取命令
+    // 璇诲彇鍛戒护
     quint8 cmdByte;
     stream >> cmdByte;
     cmd = static_cast<Command>(cmdByte);
 
-    // 读取数据长度
+    // 璇诲彇鏁版嵁闀垮害
     quint32 payloadSize;
     stream >> payloadSize;
 
-    // 计算完整包大小
-    int totalSize = PACKET_HEADER_SIZE + payloadSize + 2;  // +2 为校验和
+    // 璁＄畻瀹屾暣鍖呭ぇ灏?
+    int totalSize = PACKET_HEADER_SIZE + payloadSize + 2;  // +2 涓烘牎楠屽拰
 
     if (data.size() < totalSize) {
-        return false;  // 数据不完整，等待更多数据
+        return false;  // 鏁版嵁涓嶅畬鏁达紝绛夊緟鏇村鏁版嵁
     }
 
-    // 读取数据
+    // 璇诲彇鏁版嵁
     payload.resize(payloadSize);
     if (payloadSize > 0) {
         stream.readRawData(payload.data(), payloadSize);
     }
 
-    // 读取校验和
+    // 璇诲彇鏍￠獙鍜?
     quint16 receivedChecksum;
     stream >> receivedChecksum;
 
-    // 验证校验和（不包括最后2字节）
+    // 楠岃瘉鏍￠獙鍜岋紙涓嶅寘鎷渶鍚?瀛楄妭锛?
     quint16 calculatedChecksum = 0;
     for (int i = 0; i < totalSize - 2; ++i) {
         calculatedChecksum ^= static_cast<quint8>(data[i]);
@@ -438,13 +438,13 @@ bool DeviceConnector::parsePacket(const QByteArray& data, Command& cmd, QByteArr
         return false;
     }
 
-    // 移除已处理的数据
+    // 绉婚櫎宸插鐞嗙殑鏁版嵁
     m_receiveBuffer.remove(0, totalSize);
 
     return true;
 }
 
-// ==================== 命令处理 ====================
+// ==================== 鍛戒护澶勭悊 ====================
 
 void DeviceConnector::handleDeviceStatusFull(const QByteArray& payload)
 {
@@ -462,26 +462,26 @@ void DeviceConnector::handleDeviceStatusFull(const QByteArray& payload)
     for (int i = 0; i < deviceCount; ++i) {
         DeviceStatus status;
 
-        // 设备ID
+        // 璁惧ID
         quint16 deviceIdSize;
         stream >> deviceIdSize;
         QByteArray deviceIdBytes(deviceIdSize, Qt::Uninitialized);
         stream.readRawData(deviceIdBytes.data(), deviceIdSize);
         status.deviceId = QString::fromUtf8(deviceIdBytes);
 
-        // 设备名称
+        // 璁惧鍚嶇О
         quint16 deviceNameSize;
         stream >> deviceNameSize;
         QByteArray deviceNameBytes(deviceNameSize, Qt::Uninitialized);
         stream.readRawData(deviceNameBytes.data(), deviceNameSize);
         status.deviceName = QString::fromUtf8(deviceNameBytes);
 
-        // 在线状态
+        // 鍦ㄧ嚎鐘舵€?
         quint8 online;
         stream >> online;
         status.isOnline = (online == 1);
 
-        // 版本号
+        // 鐗堟湰鍙?
         quint16 versionSize;
         stream >> versionSize;
         if (versionSize > 0) {
@@ -490,7 +490,7 @@ void DeviceConnector::handleDeviceStatusFull(const QByteArray& payload)
             status.version = QString::fromUtf8(versionBytes);
         }
 
-        // 最后更新时间（CMC提供的时间戳）
+        // 鏈€鍚庢洿鏂版椂闂达紙CMC鎻愪緵鐨勬椂闂存埑锛?
         quint64 timestamp;
         stream >> timestamp;
         status.lastUpdateTime = QDateTime::fromSecsSinceEpoch(timestamp).toString("yyyy-MM-dd hh:mm:ss");
@@ -522,34 +522,34 @@ void DeviceConnector::handleDeviceStatusUpdate(const QByteArray& payload)
     for (int i = 0; i < updateCount; ++i) {
         DeviceStatus status;
 
-        // 设备ID
+        // 璁惧ID
         quint16 deviceIdSize;
         stream >> deviceIdSize;
         QByteArray deviceIdBytes(deviceIdSize, Qt::Uninitialized);
         stream.readRawData(deviceIdBytes.data(), deviceIdSize);
         status.deviceId = QString::fromUtf8(deviceIdBytes);
 
-        // 在线状态
+        // 鍦ㄧ嚎鐘舵€?
         quint8 online;
         stream >> online;
         status.isOnline = (online == 1);
 
-        // 最后更新时间
+        // 鏈€鍚庢洿鏂版椂闂?
         quint64 timestamp;
         stream >> timestamp;
         status.lastUpdateTime = QDateTime::fromSecsSinceEpoch(timestamp).toString("yyyy-MM-dd hh:mm:ss");
 
-        // 更新本地缓存
+        // 鏇存柊鏈湴缂撳瓨
         if (m_deviceStatusMap.contains(status.deviceId)) {
             m_deviceStatusMap[status.deviceId].isOnline = status.isOnline;
             m_deviceStatusMap[status.deviceId].lastUpdateTime = status.lastUpdateTime;
 
-            // 保留原有信息
+            // 淇濈暀鍘熸湁淇℃伅
             status.deviceName = m_deviceStatusMap[status.deviceId].deviceName;
             status.version = m_deviceStatusMap[status.deviceId].version;
         } else {
             qWarning() << "DeviceConnector: Unknown device in update:" << status.deviceId;
-            // 没有基础信息，跳过
+            // 娌℃湁鍩虹淇℃伅锛岃烦杩?
             continue;
         }
 
@@ -568,18 +568,18 @@ void DeviceConnector::handleFileReceiveResult(const QByteArray& payload)
     QDataStream stream(payload);
     stream.setByteOrder(QDataStream::BigEndian);
 
-    // 任务ID
+    // 浠诲姟ID
     quint16 taskIdSize;
     stream >> taskIdSize;
     QByteArray taskIdBytes(taskIdSize, Qt::Uninitialized);
     stream.readRawData(taskIdBytes.data(), taskIdSize);
     QString taskId = QString::fromUtf8(taskIdBytes);
 
-    // 成功标志
+    // 鎴愬姛鏍囧織
     quint8 success;
     stream >> success;
 
-    // 消息
+    // 娑堟伅
     quint16 msgSize;
     stream >> msgSize;
     QByteArray msgBytes(msgSize, Qt::Uninitialized);
@@ -595,7 +595,7 @@ void DeviceConnector::handleFileReceiveResult(const QByteArray& payload)
     if (success == 1) {
         qDebug() << "DeviceConnector: File accepted by CMC, waiting for install result from device";
     } else {
-        // 文件接收失败，清理传输资源
+        // 鏂囦欢鎺ユ敹澶辫触锛屾竻鐞嗕紶杈撹祫婧?
         cleanupFileTransfer();
     }
 }
@@ -605,25 +605,25 @@ void DeviceConnector::handleInstallResult(const QByteArray& payload)
     QDataStream stream(payload);
     stream.setByteOrder(QDataStream::BigEndian);
 
-    // 任务ID
+    // 浠诲姟ID
     quint16 taskIdSize;
     stream >> taskIdSize;
     QByteArray taskIdBytes(taskIdSize, Qt::Uninitialized);
     stream.readRawData(taskIdBytes.data(), taskIdSize);
     QString taskId = QString::fromUtf8(taskIdBytes);
 
-    // 设备ID
+    // 璁惧ID
     quint16 deviceIdSize;
     stream >> deviceIdSize;
     QByteArray deviceIdBytes(deviceIdSize, Qt::Uninitialized);
     stream.readRawData(deviceIdBytes.data(), deviceIdSize);
     QString deviceId = QString::fromUtf8(deviceIdBytes);
 
-    // 成功标志
+    // 鎴愬姛鏍囧織
     quint8 success;
     stream >> success;
 
-    // 消息
+    // 娑堟伅
     quint16 msgSize;
     stream >> msgSize;
     QByteArray msgBytes(msgSize, Qt::Uninitialized);
@@ -637,7 +637,7 @@ void DeviceConnector::handleInstallResult(const QByteArray& payload)
 
     emit installResult(taskId, deviceId, success == 1, message);
 
-    // 安装完成（无论成功或失败），清理传输资源
+    // 瀹夎瀹屾垚锛堟棤璁烘垚鍔熸垨澶辫触锛夛紝娓呯悊浼犺緭璧勬簮
     cleanupFileTransfer();
 }
 
@@ -655,7 +655,7 @@ void DeviceConnector::cleanupFileTransfer()
     m_currentTargetDeviceId.clear();
     m_fileSize = 0;
     m_sentBytes = 0;
-    m_fileMd5.clear();
+    m_fileSha256.clear();
 
     qDebug() << "DeviceConnector: File transfer cleaned up";
 }
@@ -678,9 +678,9 @@ void DeviceConnector::cleanupFileTransfer()
 //     m_socket ->connectToHost(QHostAddress(IP),Port.toUShort());
 
 //     connect(m_socket , &QTcpSocket::connected,[this](){
-//         QMessageBox::information(this,"连接提示","连接服务器成功");
+//         QMessageBox::information(this,"杩炴帴鎻愮ず","杩炴帴鏈嶅姟鍣ㄦ垚鍔?);
 //     });
 //     connect(m_socket , &QTcpSocket::disconnected,[this](){
-//         QMessageBox::warning(this,"连接提示","网络异常连接失败");
+//         QMessageBox::warning(this,"杩炴帴鎻愮ず","缃戠粶寮傚父杩炴帴澶辫触");
 //     });
 // }

@@ -202,7 +202,7 @@ InstallContext Installer::buildContext(const QString& taskId,
     context.postInstallScript = config.postInstallScript;
     context.timeoutMs = config.timeoutMs;
 
-    // TODO: 计算文件MD5（可能需要从外部传入，避免重复计算）
+    // TODO: 计算文件 SHA-256（可能需要从外部传入，避免重复计算）
     // 这里简化处理，实际应该从 FileReceiver 传入
 
     return context;

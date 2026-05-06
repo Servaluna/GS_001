@@ -51,6 +51,7 @@ private:
         QString targetDeviceId;
         QString fileName;
         qint64 fileSize;
+        QString expectedSha256;
         qint64 receivedBytes;
         QFile* tempFile;
         QCryptographicHash* hash;

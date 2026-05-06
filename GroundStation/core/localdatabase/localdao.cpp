@@ -1,6 +1,7 @@
 #include "localdao.h"
 #include "localdatabase.h"
 
+#include <QDateTime>
 #include <QSqlError>
 
 LocalDAO::LocalDAO() {}
@@ -15,37 +16,41 @@ bool LocalDAO::insert(const TransferringTask& task)
     QString sql = R"(
         INSERT INTO transferring_tasks (
             task_id, file_id, task_type, description, target_device_id,
-            priority, file_name, file_size, file_md5, transferred_bytes,
+            priority, file_name, file_size, file_sha256, transferred_bytes,
             status, current_step, error_message,
-            create_time, start_time, end_time, last_update_time
+            create_time, start_time, end_time, last_update_time,
+            local_cache_path, local_temp_path
         ) VALUES (
             :task_id, :file_id, :task_type, :description, :target_device_id,
-            :priority, :file_name, :file_size, :file_md5, :transferred_bytes,
+            :priority, :file_name, :file_size, :file_sha256, :transferred_bytes,
             :status, :current_step, :error_message,
-            :create_time, :start_time, :end_time, :last_update_time
+            :create_time, :start_time, :end_time, :last_update_time,
+            :local_cache_path, :local_temp_path
         )
     )";
 
     QSqlQuery query(LocalDatabase::getInstance()->getDatabase());
     query.prepare(sql);
 
-    query.bindValue(":task_id", task.taskId);
-    query.bindValue(":file_id", task.fileId);
-    query.bindValue(":task_type", static_cast<int>(task.taskType));
+    query.bindValue(":task_id", task.task_id);
+    query.bindValue(":file_id", task.file_id);
+    query.bindValue(":task_type", static_cast<int>(task.task_type));
     query.bindValue(":description", task.description);
-    query.bindValue(":target_device_id", task.targetDeviceId);
+    query.bindValue(":target_device_id", task.target_device_id);
     query.bindValue(":priority", task.priority);
-    query.bindValue(":file_name", task.fileName);
-    query.bindValue(":file_size", qint64(task.fileSize));
-    query.bindValue(":file_md5", task.fileMd5);
-    query.bindValue(":transferred_bytes", qint64(task.transferredBytes));
+    query.bindValue(":file_name", task.file_name);
+    query.bindValue(":file_size", qint64(task.file_size));
+    query.bindValue(":file_sha256", task.file_sha256);
+    query.bindValue(":transferred_bytes", qint64(task.transferred_bytes));
     query.bindValue(":status", static_cast<int>(task.status));
-    query.bindValue(":current_step", task.steps);
-    query.bindValue(":error_message", task.lastError);
-    query.bindValue(":create_time", task.createTime.toSecsSinceEpoch());
-    query.bindValue(":start_time", task.startTime.toSecsSinceEpoch());
-    query.bindValue(":end_time", task.endTime.toSecsSinceEpoch());
-    query.bindValue(":last_update_time", task.lastUpdateTime.toSecsSinceEpoch());
+    query.bindValue(":current_step", static_cast<int>(task.current_step));
+    query.bindValue(":error_message", task.error_message);
+    query.bindValue(":create_time", task.create_time.toSecsSinceEpoch());
+    query.bindValue(":start_time", task.start_time.toSecsSinceEpoch());
+    query.bindValue(":end_time", task.end_time.toSecsSinceEpoch());
+    query.bindValue(":last_update_time", task.last_update_time.toSecsSinceEpoch());
+    query.bindValue(":local_cache_path", task.local_cache_path);
+    query.bindValue(":local_temp_path", task.local_temp_path);
 
     if (!query.exec()) {
         qWarning() << "插入任务失败:" << query.lastError().text();
@@ -65,35 +70,39 @@ bool LocalDAO::update(const TransferringTask& task)
             priority = :priority,
             file_name = :file_name,
             file_size = :file_size,
-            file_md5 = :file_md5,
+            file_sha256 = :file_sha256,
             transferred_bytes = :transferred_bytes,
             status = :status,
             current_step = :current_step,
-            last_error = :last_error,
+            error_message = :error_message,
             start_time = :start_time,
             end_time = :end_time,
-            last_update_time = :last_update_time
+            last_update_time = :last_update_time,
+            local_cache_path = :local_cache_path,
+            local_temp_path = :local_temp_path
         WHERE task_id = :task_id
     )";
 
     QSqlQuery query(LocalDatabase::getInstance()->getDatabase());
     query.prepare(sql);
 
-    query.bindValue(":task_id", task.taskId);
-    query.bindValue(":task_type", static_cast<int>(task.taskType));
+    query.bindValue(":task_id", task.task_id);
+    query.bindValue(":task_type", static_cast<int>(task.task_type));
     query.bindValue(":description", task.description);
-    query.bindValue(":target_device_id", task.targetDeviceId);
+    query.bindValue(":target_device_id", task.target_device_id);
     query.bindValue(":priority", task.priority);
-    query.bindValue(":file_name", task.fileName);
-    query.bindValue(":file_size", qint64(task.fileSize));
-    query.bindValue(":file_md5", task.fileMd5);
-    query.bindValue(":transferred_bytes", qint64(task.transferredBytes));
+    query.bindValue(":file_name", task.file_name);
+    query.bindValue(":file_size", qint64(task.file_size));
+    query.bindValue(":file_sha256", task.file_sha256);
+    query.bindValue(":transferred_bytes", qint64(task.transferred_bytes));
     query.bindValue(":status", static_cast<int>(task.status));
-    query.bindValue(":current_step", task.steps);
-    query.bindValue(":last_error", task.lastError);
-    query.bindValue(":start_time", task.startTime.toSecsSinceEpoch());
-    query.bindValue(":end_time", task.endTime.toSecsSinceEpoch());
-    query.bindValue(":last_update_time", task.lastUpdateTime.toSecsSinceEpoch());
+    query.bindValue(":current_step", static_cast<int>(task.current_step));
+    query.bindValue(":error_message", task.error_message);
+    query.bindValue(":start_time", task.start_time.toSecsSinceEpoch());
+    query.bindValue(":end_time", task.end_time.toSecsSinceEpoch());
+    query.bindValue(":last_update_time", task.last_update_time.toSecsSinceEpoch());
+    query.bindValue(":local_cache_path", task.local_cache_path);
+    query.bindValue(":local_temp_path", task.local_temp_path);
 
     if (!query.exec()) {
         qWarning() << "更新任务失败:" << query.lastError().text();
@@ -125,7 +134,7 @@ bool LocalDAO::removeByTaskId(const QString& taskId)
 
 void LocalDAO::clearCompleted()
 {
-    QString sql = "DELETE FROM transferring_tasks WHERE status IN (4, 5, 6)";
+    QString sql = "DELETE FROM transferring_tasks WHERE status IN (5, 6, 7)";
     LocalDatabase::getInstance()->executeQuery(sql);
 }
 
@@ -192,7 +201,6 @@ QList<TransferringTask> LocalDAO::getByStatus(TransferStatus::Status status)
 
 QList<TransferringTask> LocalDAO::getPendingTasks()
 {
-    // 获取状态为 Pending(0) 的任务
     return getByStatus(TransferStatus::Pending);
 }
 
@@ -211,7 +219,6 @@ QList<TransferringTask> LocalDAO::getRunningTasks()
 
 TransferringTask LocalDAO::getCurrentRunningTask()
 {
-    // 获取优先级最高、最早创建的运行中任务
     QString sql = "SELECT * FROM transferring_tasks WHERE status IN (1, 2, 3) ORDER BY priority DESC, create_time ASC LIMIT 1";
     QSqlQuery query = LocalDatabase::getInstance()->executeQueryWithResult(sql);
 
@@ -246,7 +253,8 @@ int LocalDAO::getRunningCount()
 
 int LocalDAO::getCompletedCount()
 {
-    QString sql = "SELECT COUNT(*) FROM transferring_tasks WHERE status = 4";
+    QString sql = QString("SELECT COUNT(*) FROM transferring_tasks WHERE status = %1")
+                      .arg(static_cast<int>(TransferStatus::Succeeded));
     QSqlQuery query = LocalDatabase::getInstance()->executeQueryWithResult(sql);
 
     if (query.next()) {
@@ -257,7 +265,8 @@ int LocalDAO::getCompletedCount()
 
 int LocalDAO::getFailedCount()
 {
-    QString sql = "SELECT COUNT(*) FROM transferring_tasks WHERE status = 5";
+    QString sql = QString("SELECT COUNT(*) FROM transferring_tasks WHERE status = %1")
+                      .arg(static_cast<int>(TransferStatus::Failed));
     QSqlQuery query = LocalDatabase::getInstance()->executeQueryWithResult(sql);
 
     if (query.next()) {
@@ -290,12 +299,12 @@ bool LocalDAO::updateProgress(const QString& taskId, qint64 transferredBytes)
     return query.exec();
 }
 
-bool LocalDAO::updateCurrentStep(const QString& taskId, const QString& step)
+bool LocalDAO::updateCurrentStep(const QString& taskId, CurrentSteps::Steps step)
 {
     QString sql = "UPDATE transferring_tasks SET current_step = :current_step, last_update_time = :last_update_time WHERE task_id = :task_id";
     QSqlQuery query(LocalDatabase::getInstance()->getDatabase());
     query.prepare(sql);
-    query.bindValue(":current_step", step);
+    query.bindValue(":current_step", static_cast<int>(step));
     query.bindValue(":last_update_time", QDateTime::currentSecsSinceEpoch());
     query.bindValue(":task_id", taskId);
 
@@ -305,30 +314,31 @@ bool LocalDAO::updateCurrentStep(const QString& taskId, const QString& step)
 TransferringTask LocalDAO::rowToTask(const QSqlQuery& query)
 {
     TransferringTask task;
-    // task.id = query.value("id").toInt();
-    task.taskId = query.value("task_id").toString();
-    task.fileId = query.value("file_id").toString();
-    task.taskType = static_cast<TaskType::Type>(query.value("task_type").toInt());
+    task.task_id = query.value("task_id").toString();
+    task.file_id = query.value("file_id").toString();
+    task.task_type = static_cast<TaskType::Type>(query.value("task_type").toInt());
     task.description = query.value("description").toString();
-    task.targetDeviceId = query.value("target_device_id").toString();
+    task.target_device_id = query.value("target_device_id").toString();
     task.priority = query.value("priority").toInt();
-    task.fileName = query.value("file_name").toString();
-    task.fileSize = query.value("file_size").toLongLong();
-    task.fileMd5 = query.value("file_md5").toString();
-    task.transferredBytes = query.value("transferred_bytes").toLongLong();
+    task.file_name = query.value("file_name").toString();
+    task.file_size = query.value("file_size").toLongLong();
+    task.file_sha256 = query.value("file_sha256").toString();
+    task.transferred_bytes = query.value("transferred_bytes").toLongLong();
     task.status = static_cast<TransferStatus::Status>(query.value("status").toInt());
-    task.steps = query.value("current_step").toString();
-    task.lastError = query.value("error_message").toString();
+    task.current_step = static_cast<CurrentSteps::Steps>(query.value("current_step").toInt());
+    task.error_message = query.value("error_message").toString();
 
     qint64 createTime = query.value("create_time").toLongLong();
     qint64 startTime = query.value("start_time").toLongLong();
     qint64 endTime = query.value("end_time").toLongLong();
     qint64 lastUpdateTime = query.value("last_update_time").toLongLong();
 
-    task.createTime = QDateTime::fromSecsSinceEpoch(createTime);
-    task.startTime = startTime > 0 ? QDateTime::fromSecsSinceEpoch(startTime) : QDateTime();
-    task.endTime = endTime > 0 ? QDateTime::fromSecsSinceEpoch(endTime) : QDateTime();
-    task.lastUpdateTime = QDateTime::fromSecsSinceEpoch(lastUpdateTime);
+    task.create_time = QDateTime::fromSecsSinceEpoch(createTime);
+    task.start_time = startTime > 0 ? QDateTime::fromSecsSinceEpoch(startTime) : QDateTime();
+    task.end_time = endTime > 0 ? QDateTime::fromSecsSinceEpoch(endTime) : QDateTime();
+    task.last_update_time = QDateTime::fromSecsSinceEpoch(lastUpdateTime);
+    task.local_cache_path = query.value("local_cache_path").toString();
+    task.local_temp_path = query.value("local_temp_path").toString();
 
     return task;
 }

@@ -2,8 +2,9 @@
 #define DEVICECONNECTORWINDOW_H
 
 #include <QWidget>
-#include <QTcpSocket>
 #include <QMessageBox>
+
+class DeviceConnector;
 
 namespace Ui {
 class deviceconnectorwindow;
@@ -15,6 +16,7 @@ class deviceconnectorwindow : public QWidget
 
 public:
     explicit deviceconnectorwindow(QWidget *parent = nullptr);
+    explicit deviceconnectorwindow(DeviceConnector* connector, QWidget *parent = nullptr);
     ~deviceconnectorwindow();
 
 private slots:
@@ -23,6 +25,7 @@ private slots:
 
 private:
     Ui::deviceconnectorwindow *ui;
+    DeviceConnector* m_connector;
 };
 
 #endif // DEVICECONNECTORWINDOW_H

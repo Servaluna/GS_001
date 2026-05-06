@@ -1,7 +1,7 @@
 #ifndef LOGINDIALOG_H
 #define LOGINDIALOG_H
 
-#include "../Common/models.h"
+#include "models.h"
 
 #include <QDialog>
 #include <QMessageBox>

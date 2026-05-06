@@ -1,6 +1,6 @@
 #include "clienthandler.h"
 #include "../database/models/user.h"
-#include "../Common/protocol.h"
+// #include "protocol.h"
 
 ClientHandler::ClientHandler(QTcpSocket* socket , QObject *parent)
     : QObject{parent}
@@ -34,9 +34,9 @@ void ClientHandler::onReadyRead()
 
         // 更新活跃时间
         m_lastActiveTime = QDateTime::currentMSecsSinceEpoch();
-        DEBUG_LOCATION << "会话：" << m_socket << "lastActiveTime:" << m_lastActiveTime;
+        DEBUG_LOCATION << "Session" << m_socket << "lastActiveTime:" << m_lastActiveTime;
 
-        //选择对应的处理函数
+        // 选择对应的处理函数
         switch (msg.type) {
         case MessageType::LoginRequest:
             handleLoginRequest(msg);
@@ -69,7 +69,7 @@ void ClientHandler::handleLoginRequest(const Message& reqMsg)
 
     emit logMessage(QString("handleLoginRequest登录请求: %1").arg(username));
 
-    // 验证用户（调用User模型）
+    // 验证用户（调用 User 模型）
     UserInfo userInfo = User::authenticate(username, password);
 
     QJsonObject responseData;
@@ -77,28 +77,28 @@ void ClientHandler::handleLoginRequest(const Message& reqMsg)
     if (userInfo.isValid()) {
         emit logMessage(QString("登录成功: %1 (%2)").arg(username,userInfo.role));
 
-        // 生成简单token（实际项目应该用JWT）
+        // 生成简单 token（实际项目应使用 JWT）
         QString token = QString("%1_%2_%3")
-                            .arg(userInfo.id)
+                            .arg(userInfo.user_id)
                             .arg(userInfo.username)
                             .arg(QDateTime::currentMSecsSinceEpoch());
 
-        // 对token进行简单哈希
+        // 对 token 进行简单哈希
         QByteArray tokenHash = QCryptographicHash::hash(
                                    token.toUtf8(),
                                    QCryptographicHash::Sha256
                                    ).toHex();
 
-        //存入待返回信息
+        // 存入待返回信息
         responseData["token"] = QString(tokenHash);
         responseData["user"] = QJsonObject{
-            {"id", userInfo.id},
+            {"user_id", userInfo.user_id},
             {"username", userInfo.username},
-            {"fullName", userInfo.fullName},
-            {"role", userInfo.role}
+            {"role", userInfo.role},
+            {"status", userInfo.status}
         };
 
-        m_lastActiveTime = QDateTime::currentMSecsSinceEpoch();//保存最新登录时间
+        m_lastActiveTime = QDateTime::currentMSecsSinceEpoch(); // 保存最新登录时间
 
         Message respMsg = Message::createResponse(reqMsg, responseData);
         sendMessage(m_socket , respMsg);

@@ -100,8 +100,8 @@ private:
 
     // 辅助方法
     bool createBackup(InstallTask* task);
-    bool copyFileWithVerify(const QString& src, const QString& dst, const QString& expectedMd5);
-    QString calculateFileMd5(const QString& filePath);
+    bool copyFileWithVerify(const QString& src, const QString& dst, const QString& expectedSha256);
+    QString calculateFileSha256(const QString& filePath);
     bool runScript(const QString& scriptPath, int timeoutMs, QString& output);
     QString getDeviceVersion(const QString& deviceId);
     void ensureDirectoryExists(const QString& path);

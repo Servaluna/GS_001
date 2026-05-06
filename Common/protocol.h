@@ -2,9 +2,12 @@
 #define PROTOCOL_H
 
 #include <QByteArray>
+#include <QDateTime>
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTcpSocket>
+#include <QUuid>
 
 #define DEBUG_LOCATION qDebug().nospace() \
 << "[" << Q_FUNC_INFO \
@@ -77,9 +80,9 @@ enum Code {
 // 消息结构
 class Message {
 public:
-    MessageType::Type type = MessageType::Unknown;  //直接初始化默认无效
-    QString messageId;  //消息ID，用于请求-响应配对
-    qint64 timestamp;   //时间戳
+    MessageType::Type type = MessageType::Unknown;  // 直接初始化，默认无效
+    QString messageId;  // 消息ID，用于请求-响应配对
+    qint64 timestamp;   // 时间戳
     QJsonObject data;
 
     Message() {
@@ -94,7 +97,7 @@ public:
     }
 
     // 序列化为字节流
-    //compact为是否缩进机器不缩进人缩进
+    // compact 表示是否输出紧凑格式
     QByteArray toByteArray(bool compact = false) const {
         QJsonObject obj;
         obj["type"] = static_cast<int>(type);
@@ -119,7 +122,7 @@ public:
         }
 
         if (!doc.isObject()) {
-            qWarning() << "无效的JSON格式：不是对象";
+            qWarning() << "Invalid JSON format: not an object";
             return msg;
         }
 
@@ -165,13 +168,13 @@ public:
 // 内联函数：发送消息
 inline bool sendMessage(QTcpSocket* socket, const Message& msg) {
     if (!socket || socket->state() != QAbstractSocket::ConnectedState) {
-        qWarning() << "Socket未连接";
+        qWarning() << "Socket is not connected";
         return false;
     }
 
-    QByteArray data = msg.toByteArray(true);  // compact紧凑格式
+    QByteArray data = msg.toByteArray(true);  // compact 紧凑格式
 
-    //添加长度前缀 解决粘包问题 多客户端会出现
+    // 添加长度前缀，解决 TCP 粘包问题
     QByteArray packet;
     quint32 len = data.size();
     packet.append(reinterpret_cast<const char*>(&len), 4);//按照字节进行访问
@@ -188,15 +191,16 @@ inline bool sendMessage(QTcpSocket* socket, const Message& msg) {
     return true;
 }
 
-// 内联函数：接收消息 根据长度前缀解决TCP粘包
+// 内联函数：接收消息，根据长度前缀解决 TCP 粘包
 inline Message receiveMessage(QTcpSocket* socket, QByteArray& buffer, quint32& expectedLength) {
     buffer.append(socket->readAll());
 
-    //while循环确保完整处理一条信息
+    // while 循环确保完整处理一条消息
     while (buffer.size() >= 4) {
         if (expectedLength == 0) {
-            memcpy(&expectedLength, buffer.constData(), 4);// 从缓冲区前4字节读取长度  内存对齐问题，所以采用复制的方法而不用类型转换
-            buffer.remove(0, 4);//去掉从0位置开始4字节数据
+            // 从缓冲区前 4 字节读取长度；用 memcpy 避免内存对齐问题
+            memcpy(&expectedLength, buffer.constData(), 4);
+            buffer.remove(0, 4);
         }
 
         if (buffer.size() >= expectedLength) {
@@ -213,7 +217,7 @@ inline Message receiveMessage(QTcpSocket* socket, QByteArray& buffer, quint32& e
                 qWarning() << "收到无效消息";
             }
         } else {
-            break;  // 数据不够，等待
+            break;  // 数据不够，等待更多数据
         }
     }
 

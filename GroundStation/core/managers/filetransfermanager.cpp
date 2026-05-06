@@ -1,4 +1,4 @@
-#include "filetransfermanager.h"
+﻿#include "filetransfermanager.h"
 #include "../network/serverconnector.h"
 #include "../localdatabase/localdao.h"
 
@@ -7,9 +7,9 @@
 #include <QDir>
 #include <QCryptographicHash>
 
-// 常量定义
-constexpr int AUTO_SAVE_INTERVAL_MS = 5000;  // 每5秒自动保存一次进度
-constexpr int PROGRESS_SAVE_THRESHOLD = 5;   // 进度变化超过5%才保存到数据库
+// 甯搁噺瀹氫箟
+constexpr int AUTO_SAVE_INTERVAL_MS = 5000;  // 姣?绉掕嚜鍔ㄤ繚瀛樹竴娆¤繘搴?
+constexpr int PROGRESS_SAVE_THRESHOLD = 5;   // 杩涘害鍙樺寲瓒呰繃5%鎵嶄繚瀛樺埌鏁版嵁搴?
 
 FileTransferManager::FileTransferManager(QObject *parent)
     : QObject{parent}
@@ -21,7 +21,7 @@ FileTransferManager::FileTransferManager(QObject *parent)
 
 FileTransferManager::~FileTransferManager()
 {
-    // 清理所有下载上下文
+    // 娓呯悊鎵€鏈変笅杞戒笂涓嬫枃
     for (auto context : m_downloads.values()) {
         if (context) {
             delete context;
@@ -45,15 +45,19 @@ bool FileTransferManager::init(ServerConnector* serverConnector, LocalDAO* dao)
     m_serverConnector = serverConnector;
     m_dao = dao;
 
-    // 连接服务器信号
+    // 杩炴帴鏈嶅姟鍣ㄤ俊鍙?
     connect(m_serverConnector, &ServerConnector::fileChunkReceived,
             this, &FileTransferManager::onFileChunkReceived);
     connect(m_serverConnector, &ServerConnector::fileInfoReceived,
             this, &FileTransferManager::onFileInfoReceived);
     connect(m_serverConnector, &ServerConnector::errorOccurred,
-            this, &FileTransferManager::onServerError);
+            this, [this](const QString& msg) {
+                for (const auto& taskId : m_downloads.keys()) {
+                    onServerError(taskId, 0, msg);
+                }
+            });
 
-    // 创建自动保存定时器
+    // 鍒涘缓鑷姩淇濆瓨瀹氭椂鍣?
     m_autoSaveTimer = new QTimer(this);
     connect(m_autoSaveTimer, &QTimer::timeout, this, &FileTransferManager::onAutoSaveProgress);
     m_autoSaveTimer->start(AUTO_SAVE_INTERVAL_MS);
@@ -70,42 +74,42 @@ bool FileTransferManager::startDownload(const TransferringTask& task)
         return false;
     }
 
-    // 检查是否已在下载中
-    if (m_downloads.contains(task.taskId)) {
-        qWarning() << "Task" << task.taskId << "is already downloading";
+    // 妫€鏌ユ槸鍚﹀凡鍦ㄤ笅杞戒腑
+    if (m_downloads.contains(task.task_id)) {
+        qWarning() << "Task" << task.task_id << "is already downloading";
         return false;
     }
 
-    // 检查本地是否已有完整且有效的文件
-    if (isLocalFileValid(task.taskId, task.fileMd5)) {
-        qDebug() << "Task" << task.taskId << "file already exists and valid, skip download";
-        emit downloadFinished(task.taskId, task.localCachePath, true);
+    // 妫€鏌ユ湰鍦版槸鍚﹀凡鏈夊畬鏁翠笖鏈夋晥鐨勬枃浠?
+    if (isLocalFileValid(task.task_id, task.file_sha256)) {
+        qDebug() << "Task" << task.task_id << "file already exists and valid, skip download";
+        emit downloadFinished(task.task_id, task.local_cache_path, true);
         return true;
     }
 
-    // 创建下载上下文
+    // 鍒涘缓涓嬭浇涓婁笅鏂?
     DownloadContext* context = new DownloadContext(task);
 
-    // 设置文件路径
+    // 璁剧疆鏂囦欢璺緞
     // QString cacheDir = "cache/files/";
     // QDir().mkpath(cacheDir);
-    // context->localTempPath = cacheDir + QString("temp_%1_%2").arg(task.taskId).arg(task.fileName);
-    // context->localCachePath = cacheDir + task.fileName;
-    QDir().mkpath(QFileInfo(task.localCachePath).path());
-    QDir().mkpath(QFileInfo(task.localTempPath).path());
+    // context->localTempPath = cacheDir + QString("temp_%1_%2").arg(task.task_id).arg(task.file_name);
+    // context->localCachePath = cacheDir + task.file_name;
+    QDir().mkpath(QFileInfo(task.local_cache_path).path());
+    QDir().mkpath(QFileInfo(task.local_temp_path).path());
 
 
-    // 打开临时文件（追加模式，支持断点续传）
+    // 鎵撳紑涓存椂鏂囦欢锛堣拷鍔犳ā寮忥紝鏀寔鏂偣缁紶锛?
     context->tempFile = new QFile(context->localTempPath);
     if (context->transferredBytes > 0) {
-        // 断点续传：打开现有文件
+        // 鏂偣缁紶锛氭墦寮€鐜版湁鏂囦欢
         if (!context->tempFile->open(QIODevice::ReadWrite)) {
             qCritical() << "Failed to open temp file for resume:" << context->localTempPath;
             delete context;
             return false;
         }
 
-        // 验证现有文件大小是否匹配
+        // 楠岃瘉鐜版湁鏂囦欢澶у皬鏄惁鍖归厤
         qint64 actualSize = context->tempFile->size();
         if (actualSize != context->transferredBytes) {
             qWarning() << "File size mismatch, resetting download";
@@ -115,7 +119,7 @@ bool FileTransferManager::startDownload(const TransferringTask& task)
             context->tempFile->seek(context->transferredBytes);
         }
     } else {
-        // 新下载：创建新文件
+        // 鏂颁笅杞斤細鍒涘缓鏂版枃浠?
         if (!context->tempFile->open(QIODevice::WriteOnly)) {
             qCritical() << "Failed to create temp file:" << context->localTempPath;
             delete context;
@@ -123,15 +127,15 @@ bool FileTransferManager::startDownload(const TransferringTask& task)
         }
     }
 
-    m_downloads[task.taskId] = context;
+    m_downloads[task.task_id] = context;
 
-    // 发送下载请求到服务器
-    if (!fileDownloadRequest(task.taskId, context->transferredBytes)) {
-        cleanupContext(task.taskId);
+    // 鍙戦€佷笅杞借姹傚埌鏈嶅姟鍣?
+    if (!fileDownloadRequest(task.task_id, context->transferredBytes)) {
+        cleanupContext(task.task_id);
         return false;
     }
 
-    qDebug() << "Started download for task" << task.taskId
+    qDebug() << "Started download for task" << task.task_id
              << "resume from" << context->transferredBytes << "bytes";
     return true;
 }
@@ -167,7 +171,7 @@ bool FileTransferManager::resumeDownload(QString taskId)
 
     context->isPaused = false;
 
-    // 重新请求下载
+    // 閲嶆柊璇锋眰涓嬭浇
     if (!fileDownloadRequest(taskId, context->transferredBytes)) {
         return false;
     }
@@ -186,7 +190,7 @@ bool FileTransferManager::cancelDownload(QString taskId)
     }
 
     context->isCancelled = true;
-    cleanupContext(taskId, true);  // 删除临时文件
+    cleanupContext(taskId, true);  // 鍒犻櫎涓存椂鏂囦欢
     qDebug() << "Cancelled download for task" << taskId;
     return true;
 }
@@ -198,46 +202,45 @@ int FileTransferManager::getProgress(QString taskId) const
         return static_cast<int>((context->transferredBytes * 100) / context->totalSize);
     }
 
-    // 如果不在活动下载中，从数据库查询
+    // 濡傛灉涓嶅湪娲诲姩涓嬭浇涓紝浠庢暟鎹簱鏌ヨ
     auto task = m_dao->getTransferringTaskById(taskId);
-    if (!task.taskId.isEmpty() && task.fileSize > 0) {
-        return static_cast<int>((task.transferredBytes * 100) / task.fileSize);
+    if (!task.task_id.isEmpty() && task.file_size > 0) {
+        return static_cast<int>((task.transferred_bytes * 100) / task.file_size);
     }
 
     return 0;
 }
 
-bool FileTransferManager::isLocalFileValid(QString taskId, const QString& expectedMd5) const
+bool FileTransferManager::isLocalFileValid(QString taskId, const QString& expectedSha256) const
 {
-    // 从数据库获取任务信息
+    // 浠庢暟鎹簱鑾峰彇浠诲姟淇℃伅
     auto task = m_dao->getTransferringTaskById(taskId);
-    if (task.taskId.isEmpty()) {
+    if (task.task_id.isEmpty()) {
         return false;
     }
 
     // QString cacheDir = "cache/files/";
-    QString localPath = task.localCachePath;
+    QString localPath = task.local_cache_path;
 
     QFileInfo fileInfo(localPath);
-    if (!fileInfo.exists() || fileInfo.size() != task.fileSize) {
+    if (!fileInfo.exists() || fileInfo.size() != task.file_size) {
         return false;
     }
 
-    // 计算MD5
-    QString actualMd5 = const_cast<FileTransferManager*>(this)->calculateFileMd5(localPath);
-    return actualMd5.compare(expectedMd5, Qt::CaseInsensitive) == 0;
+    QString actualSha256 = const_cast<FileTransferManager*>(this)->calculateFileSha256(localPath);
+    return actualSha256.compare(expectedSha256, Qt::CaseInsensitive) == 0;
 }
 
 void FileTransferManager::onFileChunkReceived(QString taskId, const QByteArray& chunkData, int chunkIndex, bool isLast)
 {
-    Q_UNUSED(chunkIndex);  // 告诉编译器这个参数是有意未使用的
+    Q_UNUSED(chunkIndex);  // 鍛婅瘔缂栬瘧鍣ㄨ繖涓弬鏁版槸鏈夋剰鏈娇鐢ㄧ殑
 
     DownloadContext* context = getContext(taskId);
     if (!context || context->isPaused || context->isCancelled) {
         return;
     }
 
-    // 写入数据
+    // 鍐欏叆鏁版嵁
     qint64 bytesWritten = context->tempFile->write(chunkData);
     if (bytesWritten != chunkData.size()) {
         emit downloadFailed(taskId, 1001, "Failed to write to temp file");
@@ -248,43 +251,43 @@ void FileTransferManager::onFileChunkReceived(QString taskId, const QByteArray& 
     context->tempFile->flush();
     context->transferredBytes += bytesWritten;
 
-    // 计算进度
+    // 璁＄畻杩涘害
     int progressPercent = 0;
     if (context->totalSize > 0) {
         progressPercent = static_cast<int>((context->transferredBytes * 100) / context->totalSize);
     }
 
-    // 发送进度信号
+    // 鍙戦€佽繘搴︿俊鍙?
     emit progressUpdated(taskId, context->transferredBytes, context->totalSize, progressPercent);
 
-    // 自动保存进度（仅当进度变化超过阈值时）
+    // 鑷姩淇濆瓨杩涘害锛堜粎褰撹繘搴﹀彉鍖栬秴杩囬槇鍊兼椂锛?
     int progressChange = qAbs(progressPercent - context->lastSavedProgress);
     if (progressChange >= PROGRESS_SAVE_THRESHOLD) {
         saveProgressToDatabase(*context);
         context->lastSavedProgress = progressPercent;
     }
 
-    // 检查是否完成
+    // 妫€鏌ユ槸鍚﹀畬鎴?
     if (isLast || context->transferredBytes >= context->totalSize) {
         qDebug() << "Download completed for task" << taskId;
         bool success = finalizeDownload(*context);
         if (success) {
             emit downloadFinished(taskId, context->localCachePath, true);
         } else {
-            emit downloadFailed(taskId, 1002, "MD5 verification failed");
+            emit downloadFailed(taskId, 1002, "SHA-256 verification failed");
         }
-        cleanupContext(taskId, !success);  // 失败时删除临时文件
+        cleanupContext(taskId, !success);  // 澶辫触鏃跺垹闄や复鏃舵枃浠?
     }
 }
 
-void FileTransferManager::onFileInfoReceived(QString taskId, qint64 totalSize, const QString& md5)
+void FileTransferManager::onFileInfoReceived(QString taskId, qint64 totalSize, const QString& sha256)
 {
     DownloadContext* context = getContext(taskId);
     if (!context) {
         return;
     }
 
-    // 验证文件信息
+    // 楠岃瘉鏂囦欢淇℃伅
     if (totalSize != context->totalSize) {
         qWarning() << "File size mismatch:" << totalSize << "vs" << context->totalSize;
         emit downloadFailed(taskId, 1003, "File size mismatch");
@@ -292,9 +295,9 @@ void FileTransferManager::onFileInfoReceived(QString taskId, qint64 totalSize, c
         return;
     }
 
-    if (md5 != context->expectedMd5) {
-        qWarning() << "MD5 mismatch:" << md5 << "vs" << context->expectedMd5;
-        emit downloadFailed(taskId, 1004, "MD5 mismatch from server");
+    if (sha256.compare(context->expectedSha256, Qt::CaseInsensitive) != 0) {
+        qWarning() << "SHA-256 mismatch:" << sha256 << "vs" << context->expectedSha256;
+        emit downloadFailed(taskId, 1004, "SHA-256 mismatch from server");
         cleanupContext(taskId);
         return;
     }
@@ -315,7 +318,7 @@ void FileTransferManager::onServerError(QString taskId, int errorCode, const QSt
 
 void FileTransferManager::onAutoSaveProgress()
 {
-    // 保存所有活动下载的进度
+    // 淇濆瓨鎵€鏈夋椿鍔ㄤ笅杞界殑杩涘害
     for (auto context : m_downloads.values()) {
         if (context && !context->isPaused && !context->isCancelled) {
             saveProgressToDatabase(*context);
@@ -330,17 +333,17 @@ bool FileTransferManager::fileDownloadRequest(QString taskId, qint64 offset)
         return false;
     }
 
-    // 获取任务信息以获取file_id
+    // 鑾峰彇浠诲姟淇℃伅浠ヨ幏鍙杅ile_id
     auto task = m_dao->getTransferringTaskById(taskId);
-    if (task.taskId.isEmpty()) {
+    if (task.task_id.isEmpty()) {
         qCritical() << "Task" << taskId << "not found in database";
         return false;
     }
 
-    // 发送请求到服务器
-    // 这里假设ServerConnector有requestFileChunk方法
-    // 实际使用时需要根据你的ServerConnector API调整
-    bool result = m_serverConnector->fileDownloadRequest(task.fileId, offset);
+    // 鍙戦€佽姹傚埌鏈嶅姟鍣?
+    // 杩欓噷鍋囪ServerConnector鏈塺equestFileChunk鏂规硶
+    // 瀹為檯浣跨敤鏃堕渶瑕佹牴鎹綘鐨凷erverConnector API璋冩暣
+    bool result = m_serverConnector->fileDownloadRequest(task.file_id, offset);
     if (!result) {
         qCritical() << "Failed to send download request for task" << taskId;
         return false;
@@ -349,14 +352,14 @@ bool FileTransferManager::fileDownloadRequest(QString taskId, qint64 offset)
     return true;
 }
 
-QString FileTransferManager::calculateFileMd5(const QString& filePath) const
+QString FileTransferManager::calculateFileSha256(const QString& filePath) const
 {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
         return QString();
     }
 
-    QCryptographicHash hash(QCryptographicHash::Md5);
+    QCryptographicHash hash(QCryptographicHash::Sha256);
     if (!hash.addData(&file)) {
         return QString();
     }
@@ -371,37 +374,36 @@ void FileTransferManager::saveProgressToDatabase(const DownloadContext& context)
     }
 
     auto task = m_dao->getTransferringTaskById(context.taskId);
-    if (task.taskId.isEmpty()) {
+    if (task.task_id.isEmpty()) {
         return;
     }
 
-    task.transferredBytes = context.transferredBytes;
+    task.transferred_bytes = context.transferredBytes;
     task.status = TransferStatus::Downloading;
-    task.lastError.clear();
+    task.error_message.clear();
 
     m_dao->update(task);
 }
 
 bool FileTransferManager::finalizeDownload(DownloadContext& context)
 {
-    // 关闭临时文件
+    // 鍏抽棴涓存椂鏂囦欢
     if (context.tempFile) {
         context.tempFile->close();
     }
 
-    // 验证MD5
-    QString actualMd5 = calculateFileMd5(context.localTempPath);
-    if (actualMd5.compare(context.expectedMd5, Qt::CaseInsensitive) != 0) {
-        qCritical() << "MD5 verification failed for task" << context.taskId
-                    << "Expected:" << context.expectedMd5
-                    << "Actual:" << actualMd5;
+    QString actualSha256 = calculateFileSha256(context.localTempPath);
+    if (actualSha256.compare(context.expectedSha256, Qt::CaseInsensitive) != 0) {
+        qCritical() << "SHA-256 verification failed for task" << context.taskId
+                    << "Expected:" << context.expectedSha256
+                    << "Actual:" << actualSha256;
         return false;
     }
 
-    // 重命名临时文件为最终文件
+    // 閲嶅懡鍚嶄复鏃舵枃浠朵负鏈€缁堟枃浠?
     QFile tempFile(context.localTempPath);
     if (tempFile.exists()) {
-        // 如果最终文件已存在，先删除
+        // 濡傛灉鏈€缁堟枃浠跺凡瀛樺湪锛屽厛鍒犻櫎
         if (QFile::exists(context.localCachePath)) {
             QFile::remove(context.localCachePath);
         }
@@ -412,12 +414,12 @@ bool FileTransferManager::finalizeDownload(DownloadContext& context)
         }
     }
 
-    // 更新数据库：标记下载完成
+    // 鏇存柊鏁版嵁搴擄細鏍囪涓嬭浇瀹屾垚
     TransferringTask task = m_dao->getTransferringTaskById(context.taskId);
-    if (!task.taskId.isEmpty()) {
-        task.status = TransferStatus::Completed;
-        task.transferredBytes = context.totalSize;
-        task.localCachePath = context.localCachePath;
+    if (!task.task_id.isEmpty()) {
+        task.status = TransferStatus::Succeeded;
+        task.transferred_bytes = context.totalSize;
+        task.local_cache_path = context.localCachePath;
         m_dao->update(task);
     }
 

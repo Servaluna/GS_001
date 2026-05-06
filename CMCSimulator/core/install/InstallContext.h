@@ -11,7 +11,7 @@ struct InstallContext
     QString targetDeviceId;   // 目标设备ID
     QString deviceType;       // 设备类型（用于选择安装策略）
     QString filePath;         // 待安装文件的本地路径
-    QString fileMd5;          // 文件MD5
+    QString fileSha256;       // 文件 SHA-256
     QString fileName;         // 原始文件名
     qint64 fileSize;          // 文件大小
 

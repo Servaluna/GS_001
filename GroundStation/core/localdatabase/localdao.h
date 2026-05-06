@@ -38,7 +38,7 @@ public:
     //  批量操作
     bool updateStatus(const QString& taskId, TransferStatus::Status status);
     bool updateProgress(const QString& taskId, qint64 transferredBytes);
-    bool updateCurrentStep(const QString& taskId, const QString& step);
+    bool updateCurrentStep(const QString& taskId, CurrentSteps::Steps step);
 
 
 private:

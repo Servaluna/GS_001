@@ -45,7 +45,7 @@ private:
     LocalDatabase& operator=(const LocalDatabase&) = delete;
 
     // 创建表结构
-    // bool createTables();
+    bool createTables();
 
     static LocalDatabase* m_instance;
 

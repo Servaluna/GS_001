@@ -8,10 +8,7 @@ LoginDialog::LoginDialog(QWidget *parent)
     , ui(new Ui::LoginDialog)
 {
     ui->setupUi(this);
-
     setAttribute(Qt::WA_DeleteOnClose);
-
-
     init();
 }
 
@@ -22,25 +19,17 @@ LoginDialog::~LoginDialog()
 
 void LoginDialog::init()
 {
-    this->setWindowTitle("用户登录");
+    setWindowTitle("用户登录");
     ui->btnLogin->setDefault(true);
-
     ui->editUsername->setFocus();
     ui->editPassword->setEchoMode(QLineEdit::Password);
 
-    // 连接信号
-    connect(&ServerConnector::instance(), &ServerConnector::loginSuccess, this, [this](QString token, const UserInfo& userInfo){
-        m_userInfo = userInfo;
-        accept();
-    });
-
-    connect(&ServerConnector::instance(), &ServerConnector::errorOccurred, this, [this](const QString& msg){
+    connect(&ServerConnector::instance(), &ServerConnector::errorOccurred, this, [this](const QString& msg) {
         QMessageBox::critical(this, "错误", msg);
         ui->btnLogin->setEnabled(true);
         ui->btnLogin->setText("登录");
     });
 }
-
 
 void LoginDialog::on_btnLogin_clicked()
 {
@@ -52,14 +41,11 @@ void LoginDialog::on_btnLogin_clicked()
         return;
     }
 
-    // 发送登录请求
     ServerConnector::instance().loginRequest(username, password);
-    DEBUG_LOCATION << "发送登录请求:" << username;
+    DEBUG_LOCATION << "发送登录请求" << username;
 
     ui->btnLogin->setEnabled(false);
     ui->btnLogin->setText("登录中...");
-
-    // 等待响应（实际应用应该用异步处理）
 }
 
 void LoginDialog::on_btnCancel_clicked()

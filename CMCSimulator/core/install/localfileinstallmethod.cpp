@@ -134,7 +134,7 @@ void LocalFileInstallMethod::doVerifyCopy(InstallTask* task)
 
     QString targetFilePath = task->context.targetPath + "/" + task->context.fileName;
 
-    if (!copyFileWithVerify(task->context.filePath, targetFilePath, task->context.fileMd5)) {
+    if (!copyFileWithVerify(task->context.filePath, targetFilePath, task->context.fileSha256)) {
         rollback(task, "文件复制验证失败");
         return;
     }
@@ -212,16 +212,16 @@ void LocalFileInstallMethod::doVerifyInstallation(InstallTask* task)
     task->currentStep = static_cast<int> (InstallStep::VerifyInstall);
     emit progressUpdated(task->context.taskId, 90, "正在验证安装");
 
-    // 验证：检查目标文件是否存在且MD5正确
+    // 验证：检查目标文件是否存在且 SHA-256 正确
     QString targetFilePath = task->context.targetPath + "/" + task->context.fileName;
     if (!QFile::exists(targetFilePath)) {
         rollback(task, "安装验证失败：目标文件不存在");
         return;
     }
 
-    QString actualMd5 = calculateFileMd5(targetFilePath);
-    if (actualMd5 != task->context.fileMd5) {
-        rollback(task, "安装验证失败：文件MD5不匹配");
+    QString actualSha256 = calculateFileSha256(targetFilePath);
+    if (actualSha256.compare(task->context.fileSha256, Qt::CaseInsensitive) != 0) {
+        rollback(task, "安装验证失败：文件 SHA-256 不匹配");
         return;
     }
 
@@ -328,7 +328,7 @@ bool LocalFileInstallMethod::createBackup(InstallTask* task)
 }
 
 bool LocalFileInstallMethod::copyFileWithVerify(const QString& src, const QString& dst,
-                                                const QString& expectedMd5)
+                                                const QString& expectedSha256)
 {
     // 复制文件
     if (!QFile::copy(src, dst)) {
@@ -336,25 +336,24 @@ bool LocalFileInstallMethod::copyFileWithVerify(const QString& src, const QStrin
         return false;
     }
 
-    // 验证 MD5
-    QString actualMd5 = calculateFileMd5(dst);
-    if (actualMd5 != expectedMd5) {
-        qWarning() << "LocalFileInstallMethod: MD5 mismatch - expected:" << expectedMd5
-                   << "actual:" << actualMd5;
+    QString actualSha256 = calculateFileSha256(dst);
+    if (actualSha256.compare(expectedSha256, Qt::CaseInsensitive) != 0) {
+        qWarning() << "LocalFileInstallMethod: SHA-256 mismatch - expected:" << expectedSha256
+                   << "actual:" << actualSha256;
         return false;
     }
 
     return true;
 }
 
-QString LocalFileInstallMethod::calculateFileMd5(const QString& filePath)
+QString LocalFileInstallMethod::calculateFileSha256(const QString& filePath)
 {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
         return QString();
     }
 
-    QCryptographicHash hash(QCryptographicHash::Md5);
+    QCryptographicHash hash(QCryptographicHash::Sha256);
     if (hash.addData(&file)) {
         return hash.result().toHex();
     }

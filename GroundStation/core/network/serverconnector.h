@@ -1,8 +1,8 @@
 #ifndef SERVERCONNECTOR_H
 #define SERVERCONNECTOR_H
 
-#include "../Common/protocol.h"
-#include "../Common/models.h"
+#include "protocol.h"
+#include "models.h"
 
 #include <QDialog>
 #include <QMessageBox>
@@ -35,9 +35,9 @@ signals:
 
     void loginSuccess(QString token, const UserInfo& userInfo);
     // 文件信息接收
-    void fileInfoReceived(int taskId, qint64 totalSize, const QString& md5);
+    void fileInfoReceived(QString taskId, qint64 totalSize, const QString& sha256);
     // 文件块接收
-    void fileChunkReceived(int taskId, const QByteArray& chunkData, int chunkIndex, bool isLast);
+    void fileChunkReceived(QString taskId, const QByteArray& chunkData, int chunkIndex, bool isLast);
 
 private slots:
     void onConnected();
