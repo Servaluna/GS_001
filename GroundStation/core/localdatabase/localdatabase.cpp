@@ -4,8 +4,6 @@
 #include <QFileInfo>
 #include <QSqlError>
 #include <QSqlQuery>
-#include <QSet>
-#include <QVariant>
 
 LocalDatabase* LocalDatabase::m_instance = nullptr;
 
@@ -19,10 +17,8 @@ LocalDatabase* LocalDatabase::getInstance()
 
 void LocalDatabase::destroyInstance()
 {
-    if (m_instance) {
-        delete m_instance;
-        m_instance = nullptr;
-    }
+    delete m_instance;
+    m_instance = nullptr;
 }
 
 LocalDatabase::LocalDatabase(QObject *parent)
@@ -44,7 +40,7 @@ bool LocalDatabase::init(const QString& dbPath)
     m_dbPath = dbPath;
 
     QDir dir;
-    QString dirPath = QFileInfo(dbPath).absolutePath();
+    const QString dirPath = QFileInfo(dbPath).absolutePath();
     if (!dir.exists(dirPath) && !dir.mkpath(dirPath)) {
         m_lastError = "无法创建数据库目录: " + dirPath;
         qWarning() << m_lastError;
@@ -113,77 +109,121 @@ QSqlQuery LocalDatabase::executeQueryWithResult(const QString& sql)
 
 bool LocalDatabase::beginTransaction()
 {
-    if (!m_isInitialized) return false;
-    return m_db.transaction();
+    return m_isInitialized && m_db.transaction();
 }
 
 bool LocalDatabase::commitTransaction()
 {
-    if (!m_isInitialized) return false;
-    return m_db.commit();
+    return m_isInitialized && m_db.commit();
 }
 
 bool LocalDatabase::rollbackTransaction()
 {
-    if (!m_isInitialized) return false;
-    return m_db.rollback();
+    return m_isInitialized && m_db.rollback();
 }
 
 bool LocalDatabase::createTables()
 {
-    QString createTableSql = R"(
-        CREATE TABLE IF NOT EXISTS transferring_tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_id VARCHAR(64) NOT NULL UNIQUE,
-            file_id VARCHAR(64) NOT NULL,
-            task_type INTEGER NOT NULL DEFAULT 0,
-            description VARCHAR(255) DEFAULT '',
-            target_device_id VARCHAR(64) NOT NULL,
-            priority INTEGER NOT NULL DEFAULT 5,
-            file_name VARCHAR(255) NOT NULL,
-            file_size INTEGER NOT NULL DEFAULT 0,
-            file_sha256 VARCHAR(64) NOT NULL,
-            transferred_bytes INTEGER NOT NULL DEFAULT 0,
-            status INTEGER NOT NULL DEFAULT 0,
-            current_step INTEGER NOT NULL DEFAULT 0,
-            error_message TEXT DEFAULT '',
-            create_time INTEGER NOT NULL,
-            start_time INTEGER DEFAULT 0,
-            end_time INTEGER DEFAULT 0,
-            last_update_time INTEGER NOT NULL,
-            local_cache_path VARCHAR(512) DEFAULT '',
-            local_temp_path VARCHAR(512) DEFAULT ''
+    const QString createDeviceUpgradeTaskSql = R"(
+        CREATE TABLE IF NOT EXISTS device_upgrade_task (
+            device_task_id INTEGER PRIMARY KEY,
+
+            server_device_task_id INTEGER,
+            aircraft_task_id INTEGER,
+            batch_id INTEGER,
+
+            owner_user_id INTEGER NOT NULL,
+            assigned_operator_user_id INTEGER,
+
+            aircraft_code TEXT,
+            device_code TEXT NOT NULL,
+            file_code TEXT NOT NULL,
+            execution_order INTEGER DEFAULT 0,
+
+            status INTEGER DEFAULT 0, -- 0-WAITING 1-DOWNLOADING 2-TRANSFERRING 3-INSTALLING 4-VERIFYING 5-SUCCESS 6-FAILED
+            progress REAL DEFAULT 0,
+            current_phase TEXT,       -- waiting/downloading/transferring/installing/verifying/success/failed
+            retry_count INTEGER DEFAULT 0,
+
+            local_package_path TEXT,
+
+            total_size INTEGER DEFAULT 0,
+            downloaded_size INTEGER DEFAULT 0,
+            transferred_size INTEGER DEFAULT 0,
+
+            start_time DATETIME,
+            last_update_time DATETIME,
+            finish_time DATETIME,
+            last_error TEXT
         )
     )";
 
-    if (!executeQuery(createTableSql)) {
+    const QString createDownloadSessionSql = R"(
+        CREATE TABLE IF NOT EXISTS download_session (
+            download_session_id TEXT PRIMARY KEY,
+
+            device_task_id INTEGER NOT NULL,
+            file_code TEXT NOT NULL,
+
+            status INTEGER DEFAULT 0,
+            progress REAL DEFAULT 0,
+
+            local_path TEXT,
+            temp_path TEXT,
+            downloaded_size INTEGER DEFAULT 0,
+            total_size INTEGER DEFAULT 0,
+            checksum_sha256 TEXT,
+
+            started_at DATETIME,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            finished_at DATETIME,
+            expire_time DATETIME,
+            error_message TEXT,
+
+            FOREIGN KEY (device_task_id) REFERENCES device_upgrade_task(device_task_id) ON DELETE CASCADE
+        )
+    )";
+
+    const QString createTransferSessionSql = R"(
+        CREATE TABLE IF NOT EXISTS transfer_session (
+            transfer_session_id TEXT PRIMARY KEY,
+
+            device_task_id INTEGER NOT NULL,
+            device_code TEXT NOT NULL,
+            file_code TEXT NOT NULL,
+
+            status INTEGER DEFAULT 0,
+            progress REAL DEFAULT 0,
+
+            local_package_path TEXT,
+            transferred_size INTEGER DEFAULT 0,
+            total_size INTEGER DEFAULT 0,
+            checksum_sha256 TEXT,
+
+            started_at DATETIME,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            finished_at DATETIME,
+            error_message TEXT,
+
+            FOREIGN KEY (device_task_id) REFERENCES device_upgrade_task(device_task_id) ON DELETE CASCADE
+        )
+    )";
+
+    if (!executeQuery("PRAGMA foreign_keys = ON") ||
+        !executeQuery(createDeviceUpgradeTaskSql) ||
+        !executeQuery(createDownloadSessionSql) ||
+        !executeQuery(createTransferSessionSql)) {
         return false;
     }
 
-    QSqlQuery columnQuery(m_db);
-    if (columnQuery.exec("PRAGMA table_info(transferring_tasks)")) {
-        QSet<QString> columns;
-        while (columnQuery.next()) {
-            columns.insert(columnQuery.value("name").toString());
-        }
-
-        if (!columns.contains("file_sha256") &&
-            !executeQuery("ALTER TABLE transferring_tasks ADD COLUMN file_sha256 VARCHAR(64) NOT NULL DEFAULT ''")) {
-            return false;
-        }
-        if (!columns.contains("local_cache_path") &&
-            !executeQuery("ALTER TABLE transferring_tasks ADD COLUMN local_cache_path VARCHAR(512) DEFAULT ''")) {
-            return false;
-        }
-        if (!columns.contains("local_temp_path") &&
-            !executeQuery("ALTER TABLE transferring_tasks ADD COLUMN local_temp_path VARCHAR(512) DEFAULT ''")) {
-            return false;
-        }
-    }
-
-    executeQuery("CREATE INDEX IF NOT EXISTS idx_task_id ON transferring_tasks(task_id)");
-    executeQuery("CREATE INDEX IF NOT EXISTS idx_status ON transferring_tasks(status)");
-    executeQuery("CREATE INDEX IF NOT EXISTS idx_priority ON transferring_tasks(priority)");
+    executeQuery("CREATE INDEX IF NOT EXISTS idx_device_upgrade_task_operator ON device_upgrade_task(assigned_operator_user_id)");
+    executeQuery("CREATE INDEX IF NOT EXISTS idx_device_upgrade_task_aircraft ON device_upgrade_task(aircraft_task_id)");
+    executeQuery("CREATE INDEX IF NOT EXISTS idx_device_upgrade_task_status ON device_upgrade_task(status)");
+    executeQuery("CREATE INDEX IF NOT EXISTS idx_device_upgrade_task_order ON device_upgrade_task(aircraft_task_id, execution_order)");
+    executeQuery("CREATE INDEX IF NOT EXISTS idx_download_session_device_task ON download_session(device_task_id)");
+    executeQuery("CREATE INDEX IF NOT EXISTS idx_download_session_status ON download_session(status)");
+    executeQuery("CREATE INDEX IF NOT EXISTS idx_transfer_session_device_task ON transfer_session(device_task_id)");
+    executeQuery("CREATE INDEX IF NOT EXISTS idx_transfer_session_status ON transfer_session(status)");
 
     return true;
 }

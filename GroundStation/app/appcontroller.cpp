@@ -1,5 +1,6 @@
 #include "appcontroller.h"
 
+#include "../core/services/taskservice.h"
 #include "../core/network/deviceconnector.h"
 #include "../core/network/serverconnector.h"
 #include "../ui/deviceconnectorwindow.h"
@@ -20,6 +21,13 @@ int AppController::start()
     if (!connectToCentralServer()) {
         return -1;
     }
+
+    m_deviceConnector = new DeviceConnector(this);
+    m_taskService = new TaskService(this);
+    if (!m_taskService->init(&ServerConnector::instance(), m_deviceConnector)) {
+        return -1;
+    }
+    m_taskService->start();
 
     connect(&ServerConnector::instance(), &ServerConnector::loginSuccess,
             this, &AppController::onLoginSuccess);
@@ -46,10 +54,10 @@ bool AppController::connectToCentralServer()
 
     if (!server.isConnected()) {
         qCritical() << "无法连接到服务器 CentralServer 127.0.0.1:8000";
-        qCritical() << "请确保服务器已启动";
+        qCritical() << "请确认服务器已经启动，并且监听地址和端口正确";
         QMessageBox::critical(nullptr,
                               "连接失败",
-                              "无法连接到服务器 CentralServer 127.0.0.1:8000，请确保服务器已启动。");
+                              "无法连接到服务器 CentralServer 127.0.0.1:8000，请确认服务器已经启动，并且监听地址和端口正确。");
         return false;
     }
 
@@ -79,7 +87,7 @@ void AppController::showMainPage(const QString& token, const UserInfo& userInfo)
 {
     closeMainPage();
 
-    m_mainWindow = new MainWindow(token, userInfo);
+    m_mainWindow = new MainWindow(token, userInfo, m_taskService);
     connect(m_mainWindow, &QObject::destroyed, this, [this]() {
         m_mainWindow.clear();
     });
@@ -87,6 +95,12 @@ void AppController::showMainPage(const QString& token, const UserInfo& userInfo)
             this, &AppController::onOpenDeviceConnectorRequested);
     connect(m_mainWindow, &MainWindow::logoutFromMainWindow,
             this, &AppController::onLogoutRequested);
+    connect(m_taskService, &TaskService::taskFinished,
+            m_mainWindow, [this]() {
+                if (m_mainWindow) {
+                    m_mainWindow->showExecutePageAndReload();
+                }
+            });
 
     m_mainWindow->show();
     closeLoginPage();
@@ -106,12 +120,8 @@ void AppController::onLogoutRequested()
 
 void AppController::onOpenDeviceConnectorRequested()
 {
-    if (!m_mainWindow) {
+    if (!m_mainWindow || !m_deviceConnector) {
         return;
-    }
-
-    if (!m_deviceConnector) {
-        m_deviceConnector = new DeviceConnector(this);
     }
 
     if (!m_deviceConnectorWindow) {

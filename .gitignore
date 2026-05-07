@@ -12,11 +12,3 @@ build/
 # 缓存目录
 data/client_cache/
 *.log
-
-# sql相关文件
-*.sql                    # 忽略所有 .sql 文件
-**/*.sql
-sql/                     # 忽略叫 sql 的文件夹
-**/sql/                  # 忽略任何路径下的 sql 文件夹
-CentralServer/sql/
-CentralServer/sql/*.sql

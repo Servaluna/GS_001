@@ -10,6 +10,7 @@
 class DeviceConnector;
 class LoginDialog;
 class MainWindow;
+class TaskService;
 class deviceconnectorwindow;
 
 class AppController : public QObject
@@ -38,6 +39,7 @@ private:
     QPointer<MainWindow> m_mainWindow;
     QPointer<deviceconnectorwindow> m_deviceConnectorWindow;
     QPointer<DeviceConnector> m_deviceConnector;
+    QPointer<TaskService> m_taskService;
 };
 
 #endif // APPCONTROLLER_H

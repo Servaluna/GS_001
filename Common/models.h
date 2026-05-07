@@ -1,6 +1,8 @@
 #ifndef MODELS_H
 #define MODELS_H
 
+#include "taskstatus.h"
+
 #include <QDateTime>
 #include <QJsonObject>
 #include <QMetaType>
@@ -14,9 +16,10 @@ namespace UserRole {
     };
 
     inline Role roleFromString(const QString& role) {
-        if (role == "Admin") return Admin;
-        if (role == "Engineer") return Engineer;
-        if (role == "Operator") return Operator;
+        const QString normalized = role.trimmed().toLower();
+        if (normalized == "admin") return Admin;
+        if (normalized == "engineer") return Engineer;
+        if (normalized == "operator" || normalized == "operater") return Operator;
         return Operator;
     }
 
@@ -45,6 +48,7 @@ struct UserInfo {
     int user_id;
     QString username;
     QString password_hash;
+    int role_id;
     QString role;
     int status;
     QDateTime last_login;
@@ -54,21 +58,23 @@ struct UserInfo {
 
     UserInfo()
         : user_id(-1)
+        , role_id(-1)
         , status(1)
         , creator_user_id(-1)
     {}
 
     bool isValid() const { return user_id > 0; }
     bool isActive() const { return status == 1; }
-    bool isAdmin() const { return role == "Admin"; }
-    bool isEngineer() const { return role == "Engineer"; }
-    bool isOperator() const { return role == "Operator"; }
+    bool isAdmin() const { return UserRole::roleFromString(role) == UserRole::Admin; }
+    bool isEngineer() const { return UserRole::roleFromString(role) == UserRole::Engineer; }
+    bool isOperator() const { return UserRole::roleFromString(role) == UserRole::Operator; }
 
     static UserInfo fromJson(const QJsonObject& json) {
         UserInfo info;
         info.user_id = json["user_id"].toInt(-1);
         info.username = json["username"].toString();
         info.password_hash = json["password_hash"].toString();
+        info.role_id = json["role_id"].toInt(-1);
         info.role = json["role"].toString();
         info.status = json["status"].toInt(1);
         info.last_login = QDateTime::fromString(json["last_login"].toString(), Qt::ISODate);
@@ -83,6 +89,7 @@ struct UserInfo {
         json["user_id"] = user_id;
         json["username"] = username;
         json["password_hash"] = password_hash;
+        json["role_id"] = role_id;
         json["role"] = role;
         json["status"] = status;
         json["last_login"] = last_login.toString(Qt::ISODate);
@@ -342,22 +349,12 @@ struct FileInfo {
     }
 };
 
-namespace BatchTaskStatus {
-    enum Status {
-        Created = 0,
-        Running = 1,
-        Completed = 2,
-        Failed = 3,
-        Cancelled = 4
-    };
-}
-
 struct BatchUpgradeTaskInfo {
     int batch_id;
     QString batch_name;
     QString description;
     int creator_user_id;
-    BatchTaskStatus::Status status;
+    BatchTaskStatus status;
     QDateTime start_time;
     QDateTime finish_time;
     QDateTime create_at;
@@ -400,42 +397,12 @@ namespace TaskType {
     }
 }
 
-namespace TaskStatus {
-    enum Status {
-        Pending = 0,
-        Running = 1,
-        Completed = 2,
-        Failed = 3,
-        Cancelled = 4
-    };
-
-    inline Status fromString(const QString& status) {
-        if (status == "Pending") return Pending;
-        if (status == "Running") return Running;
-        if (status == "Completed") return Completed;
-        if (status == "Failed") return Failed;
-        if (status == "Cancelled") return Cancelled;
-        return Pending;
-    }
-
-    inline QString toString(Status status) {
-        switch (status) {
-        case Pending: return "Pending";
-        case Running: return "Running";
-        case Completed: return "Completed";
-        case Failed: return "Failed";
-        case Cancelled: return "Cancelled";
-        default: return "Pending";
-        }
-    }
-}
-
 struct AircraftUpgradeTaskInfo {
     int aircraft_task_id;
     int batch_id;
     QString aircraft_code;
     int assigned_operator_user_id;
-    TaskStatus::Status status;
+    DeviceTaskStatus status;
     double progress;
     QString current_phase;
     QString current_client_id;
@@ -448,7 +415,7 @@ struct AircraftUpgradeTaskInfo {
         : aircraft_task_id(-1)
         , batch_id(-1)
         , assigned_operator_user_id(-1)
-        , status(TaskStatus::Pending)
+        , status(DeviceTaskStatus::Waiting)
         , progress(0.0)
     {}
 
@@ -461,7 +428,7 @@ struct DeviceUpgradeTaskInfo {
     QString device_code;
     QString file_code;
     int execution_order;
-    TaskStatus::Status status;
+    DeviceTaskStatus status;
     double progress;
     int retry_count;
     qint64 transferred_size;
@@ -475,7 +442,7 @@ struct DeviceUpgradeTaskInfo {
         : device_task_id(-1)
         , aircraft_task_id(-1)
         , execution_order(0)
-        , status(TaskStatus::Pending)
+        , status(DeviceTaskStatus::Waiting)
         , progress(0.0)
         , retry_count(0)
         , transferred_size(0)
@@ -522,7 +489,7 @@ struct TaskBasicInfo {
     QString aircraft_code;
     QString device_code;
     int priority;
-    TaskStatus::Status status;
+    DeviceTaskStatus status;
     QDateTime create_time;
     QDateTime start_time;
     QDateTime end_time;
@@ -532,7 +499,7 @@ struct TaskBasicInfo {
     TaskBasicInfo()
         : task_type(TaskType::Unknown)
         , priority(5)
-        , status(TaskStatus::Pending)
+        , status(DeviceTaskStatus::Waiting)
     {}
 
     bool isValid() const {
@@ -558,7 +525,7 @@ struct TaskBasicInfo {
         info.aircraft_code = json["aircraft_code"].toString();
         info.device_code = json["device_code"].toString();
         info.priority = json["priority"].toInt(5);
-        info.status = TaskStatus::fromString(json["status"].toString());
+        info.status = TaskStatusText::deviceFromInt(json["status"].toInt());
         info.create_time = QDateTime::fromString(json["create_time"].toString(), Qt::ISODate);
         info.start_time = QDateTime::fromString(json["start_time"].toString(), Qt::ISODate);
         info.end_time = QDateTime::fromString(json["end_time"].toString(), Qt::ISODate);
@@ -576,7 +543,7 @@ struct TaskBasicInfo {
         json["aircraft_code"] = aircraft_code;
         json["device_code"] = device_code;
         json["priority"] = priority;
-        json["status"] = TaskStatus::toString(status);
+        json["status"] = TaskStatusText::toInt(status);
         json["create_time"] = create_time.toString(Qt::ISODate);
         json["start_time"] = start_time.toString(Qt::ISODate);
         json["end_time"] = end_time.toString(Qt::ISODate);

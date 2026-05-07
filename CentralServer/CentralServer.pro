@@ -11,7 +11,8 @@ CONFIG += c++17
 INCLUDEPATH += $$PWD/../Common
 
 SOURCES += \
-    core/database/models/user.cpp \
+    core/dao/userdao.cpp \
+    core/services/userservice.cpp \
     core/network/clienthandler.cpp \
     main.cpp \
     core/database/databasemanager.cpp \
@@ -21,8 +22,10 @@ HEADERS += \
     ../Common/fileprotocol.h \
     ../Common/models.h \
     ../Common/protocol.h \
+    ../Common/taskstatus.h \
+    core/dao/userdao.h \
     core/database/databasemanager.h \
-    core/database/models/user.h \
+    core/services/userservice.h \
     core/network/clienthandler.h \
     core/network/server.h
 

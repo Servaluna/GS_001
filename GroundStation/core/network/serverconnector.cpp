@@ -1,12 +1,11 @@
-#include "serverconnector.h"
+﻿#include "serverconnector.h"
 
 ServerConnector::ServerConnector(QObject *parent)
     : QObject(parent)
-    ,m_socket(nullptr)
+    , m_socket(nullptr)
 {
     m_socket = new QTcpSocket(this);
 
-    // 连接信号槽
     connect(m_socket, &QTcpSocket::connected, this, &ServerConnector::onConnected);
     connect(m_socket, &QTcpSocket::disconnected, this, &ServerConnector::onDisconnected);
     connect(m_socket, &QTcpSocket::errorOccurred, this, &ServerConnector::onErrorOccurred);
@@ -18,29 +17,6 @@ ServerConnector::~ServerConnector()
     cleanupSocket();
 }
 
-void ServerConnector::cleanupSocket()
-{
-    if (m_socket) {
-        if (m_socket->isOpen()) {
-            m_socket->disconnectFromHost();
-        }
-
-        m_socket->blockSignals(true);
-
-        m_socket->deleteLater();
-        if (m_socket->state() == QAbstractSocket::ConnectedState ||
-            m_socket->state() == QAbstractSocket::ClosingState) {
-            m_socket->waitForDisconnected(2000);
-        }
-
-        m_socket->blockSignals(false);
-
-        m_socket->close();
-        m_socket = nullptr;
-        DEBUG_LOCATION << "socket 清理完成";
-    }
-}
-
 ServerConnector& ServerConnector::instance()
 {
     static ServerConnector instance;
@@ -49,19 +25,17 @@ ServerConnector& ServerConnector::instance()
 
 bool ServerConnector::connectToServer(const QString& host, quint16 port)
 {
-    // 如果已经连接到同一个服务器，直接返回成功
     if (isConnected() && m_host == host && m_port == port) {
         DEBUG_LOCATION << "已经连接到服务器" << host << ":" << port;
         return true;
     }
 
-    // 如果已连接到其他服务器，先断开
     if (isConnected()) {
         DEBUG_LOCATION << "断开当前连接，准备连接到新服务器";
         m_pendingHost = host;
         m_pendingPort = port;
         m_pendingConnection = true;
-        disconnectFromServer();     // 注意：disconnect() 应该是同步的，或者等待它完成
+        disconnectFromServer();
         return true;
     }
 
@@ -76,6 +50,27 @@ void ServerConnector::disconnectFromServer()
     }
 }
 
+void ServerConnector::cleanupSocket()
+{
+    if (!m_socket) {
+        return;
+    }
+
+    if (m_socket->isOpen()) {
+        m_socket->disconnectFromHost();
+    }
+
+    if (m_socket->state() == QAbstractSocket::ConnectedState ||
+        m_socket->state() == QAbstractSocket::ClosingState) {
+        m_socket->waitForDisconnected(2000);
+    }
+
+    m_socket->close();
+    m_socket->deleteLater();
+    m_socket = nullptr;
+    DEBUG_LOCATION << "socket 清理完成";
+}
+
 void ServerConnector::doConnect(const QString& host, quint16 port)
 {
     m_host = host;
@@ -85,7 +80,7 @@ void ServerConnector::doConnect(const QString& host, quint16 port)
 
 void ServerConnector::onConnected()
 {
-    DEBUG_LOCATION << "客户端已连接到服务器" << m_host << ":" << m_port << "，会话：" << m_socket;
+    DEBUG_LOCATION << "客户端已连接到服务器" << m_host << ":" << m_port << "socket:" << m_socket;
     emit connected();
 }
 
@@ -102,7 +97,7 @@ void ServerConnector::onDisconnected()
 
 void ServerConnector::onErrorOccurred(QAbstractSocket::SocketError error)
 {
-    QString errorMsg = m_socket->errorString();
+    const QString errorMsg = m_socket ? m_socket->errorString() : QString("Socket 不存在");
     qCritical() << "网络错误状态码:" << error;
     qCritical() << "网络错误信息:" << errorMsg;
     emit errorOccurred(errorMsg);
@@ -110,39 +105,50 @@ void ServerConnector::onErrorOccurred(QAbstractSocket::SocketError error)
 
 void ServerConnector::onReadyRead()
 {
-        // 循环处理所有（可能是多条）完整消息
-        while (true) {
-            Message msg = receiveMessage(m_socket, m_buffer, m_expectedLength);
-
-            if (!msg.isValid()) {
-                break;  // 没有完整消息，等待更多数据
-            }
-
-            // 更新活跃时间
-            m_lastActiveTime = QDateTime::currentMSecsSinceEpoch();
-            DEBUG_LOCATION << "Session" << m_socket << "lastActiveTime:" << m_lastActiveTime;
-
-            // 选择对应的处理函数
-            switch (msg.type) {
-            case MessageType::LoginResponse:
-                handleLoginResponse(msg);
-                DEBUG_LOCATION << "消息类型:" << msg.type;
-                break;
-
-            case MessageType::Error: {
-                QString errorMsg = msg.data["error"].toString();
-                if (errorMsg.isEmpty()) errorMsg = "Unknown server error";
-                emit errorOccurred(errorMsg);
-                break;
-            }
-
-
-            default:
-                DEBUG_LOCATION << "未处理的消息类型:" << msg.type;
-                break;
-            }
+    while (true) {
+        Message msg = receiveMessage(m_socket, m_buffer, m_expectedLength);
+        if (!msg.isValid()) {
+            break;
         }
 
+        m_lastActiveTime = QDateTime::currentMSecsSinceEpoch();
+        DEBUG_LOCATION << "Session" << m_socket << "lastActiveTime:" << m_lastActiveTime;
+
+        switch (msg.type) {
+        case MessageType::LoginResponse:
+            handleLoginResponse(msg);
+            DEBUG_LOCATION << "消息类型:" << msg.type;
+            break;
+
+        case MessageType::TaskFileInfo:
+            emit fileInfoReceived(msg.data["task_uuid"].toString(msg.messageId),
+                                  msg.data["total_size"].toInteger(),
+                                  msg.data["sha256"].toString());
+            break;
+
+        case MessageType::FileData: {
+            const QByteArray chunkData = QByteArray::fromBase64(msg.data["chunk_data"].toString().toUtf8());
+            emit fileChunkReceived(msg.data["task_uuid"].toString(msg.messageId),
+                                   chunkData,
+                                   msg.data["chunk_index"].toInt(),
+                                   msg.data["is_last"].toBool());
+            break;
+        }
+
+        case MessageType::Error: {
+            QString errorMsg = msg.data["error"].toString();
+            if (errorMsg.isEmpty()) {
+                errorMsg = "Unknown server error";
+            }
+            emit errorOccurred(errorMsg);
+            break;
+        }
+
+        default:
+            DEBUG_LOCATION << "未处理的消息类型:" << msg.type;
+            break;
+        }
+    }
 }
 
 void ServerConnector::loginRequest(const QString& username, const QString& password)
@@ -162,12 +168,12 @@ void ServerConnector::loginRequest(const QString& username, const QString& passw
 
     sendMessage(m_socket, reqMsg);
 
-    DEBUG_LOCATION << "发送登录请求" << username
-                   << "reqMsg.type: " << reqMsg.type
-                   << "reqMsg.data: " << reqMsg.data;
+    DEBUG_LOCATION << "发送登录请求:" << username
+                   << "reqMsg.type:" << reqMsg.type
+                   << "reqMsg.data:" << reqMsg.data;
 }
 
-bool ServerConnector::fileDownloadRequest(QString fileId, qint64 offset)
+bool ServerConnector::fileDownloadRequest(const QString& fileCode, qint64 offset, const QString& taskUuid)
 {
     if (!isConnected()) {
         emit errorOccurred("Not connected to server");
@@ -175,8 +181,10 @@ bool ServerConnector::fileDownloadRequest(QString fileId, qint64 offset)
     }
 
     QJsonObject data;
-    data["fileId"] = fileId;
+    data["file_code"] = fileCode;
+    data["fileId"] = fileCode;
     data["offset"] = offset;
+    data["task_uuid"] = taskUuid;
 
     Message reqMsg(MessageType::GetTaskFile, data);
     return sendMessage(m_socket, reqMsg);
@@ -184,8 +192,8 @@ bool ServerConnector::fileDownloadRequest(QString fileId, qint64 offset)
 
 void ServerConnector::handleLoginResponse(const Message& respMsg)
 {
-    QString token = respMsg.data["token"].toString();
-    UserInfo user =UserInfo::fromJson(respMsg.data["user"].toObject());
+    const QString token = respMsg.data["token"].toString();
+    const UserInfo user = UserInfo::fromJson(respMsg.data["user"].toObject());
 
     emit loginSuccess(token, user);
 }

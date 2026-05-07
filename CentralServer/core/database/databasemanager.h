@@ -1,9 +1,11 @@
 #ifndef DATABASEMANAGER_H
 #define DATABASEMANAGER_H
 
+#ifndef DEBUG_LOCATION
 #define DEBUG_LOCATION qDebug().nospace()\
 << "[" << Q_FUNC_INFO\
        << " @ " << QFileInfo(__FILE__).fileName() << ":" << __LINE__ << "]"
+#endif
 
 #include <QObject>
 #include <QMessageBox>

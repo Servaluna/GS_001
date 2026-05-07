@@ -80,9 +80,3 @@ CMakeLists.txt.user*
 .rcc/
 .uic/
 /build*/
-data/
-
-# sql相关文件
-*.sql                    # 忽略所有 .sql 文件
-sql/                     # 忽略叫 sql 的文件夹
-**/sql/                  # 忽略任何路径下的 sql 文件夹

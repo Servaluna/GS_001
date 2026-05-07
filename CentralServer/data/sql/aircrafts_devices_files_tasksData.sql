@@ -1,0 +1,10 @@
+-- 该文件保留为旧数据脚本占位，当前建库与初始化请使用：
+-- 1. 01_createTable.sql
+-- 2. 02_initializeData.sql
+-- 3. 03_createUpgrageTask.sql
+--
+-- 旧版本脚本曾直接把 aircraft_code/device_code/file_code 写入外键列，
+-- 并引用已经移除的 tasks 表。现在外键统一使用自增 id，
+-- 业务 code 只作为唯一业务编号和界面展示字段。
+--
+-- 为避免误执行旧结构 SQL，本文件不再写入任何数据。

@@ -13,13 +13,19 @@ INCLUDEPATH += ../Common
 
 SOURCES += \
     app/appcontroller.cpp \
-    core/localdatabase/localdao.cpp \
+    core/dao/aircrafttaskdao.cpp \
+    core/dao/devicetaskdao.cpp \
+    core/dao/downloadcheckpointdao.cpp \
+    core/dao/transfersessiondao.cpp \
     core/localdatabase/localdatabase.cpp \
-    core/localdatabase/localmodels/transferringtask.cpp \
-    core/managers/filetransfermanager.cpp \
-    core/managers/taskexecutor.cpp \
     core/network/deviceconnector.cpp \
+    core/repository/taskrepository.cpp \
+    core/services/taskservice.cpp \
     core/session/sessionmanager.cpp \
+    core/domain/download/downloadmanager.cpp \
+    core/domain/scheduler/taskscheduler.cpp \
+    core/domain/state/taskstatemachine.cpp \
+    core/domain/transfer/transfermanager.cpp \
     main.cpp \
     ui/deviceconnectorwindow.cpp \
     ui/logindialog.cpp \
@@ -27,14 +33,24 @@ SOURCES += \
     core/network/serverconnector.cpp
 
 HEADERS += \
+    ../Common/taskstatus.h \
     app/appcontroller.h \
-    core/localdatabase/localdao.h \
+    core/dao/aircrafttaskdao.h \
+    core/dao/devicetaskdao.h \
+    core/dao/downloadcheckpointdao.h \
     core/localdatabase/localdatabase.h \
-    core/localdatabase/localmodels/transferringtask.h \
-    core/managers/filetransfermanager.h \
-    core/managers/taskexecutor.h \
+    core/models/aircrafttask.h \
+    core/models/devicetask.h \
+    core/models/downloadtask.h \
+    core/models/transfersession.h \
     core/network/deviceconnector.h \
+    core/repository/taskrepository.h \
+    core/services/taskservice.h \
     core/session/sessionmanager.h \
+    core/domain/download/downloadmanager.h \
+    core/domain/scheduler/taskscheduler.h \
+    core/domain/state/taskstatemachine.h \
+    core/domain/transfer/transfermanager.h \
     ui/deviceconnectorwindow.h \
     ui/logindialog.h \
     ui/mainwindow.h \

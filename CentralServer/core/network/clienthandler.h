@@ -8,6 +8,9 @@
 #include <QJsonObject>
 #include <QFileInfo>
 
+class UserDAO;
+class UserService;
+
 class ClientHandler : public QObject
 {
     Q_OBJECT
@@ -27,8 +30,10 @@ private:
     QTcpSocket* m_socket = nullptr;
     QByteArray m_buffer;
     quint32 m_expectedLength = 0;
+    UserDAO* m_userDao = nullptr;
+    UserService* m_userService = nullptr;
 
-    quint64 m_lastActiveTime = 0;// 存储毫秒级时间戳,性能更高
+    quint64 m_lastActiveTime = 0; // 保存毫秒级时间戳。
 
     void handleLoginRequest(const Message& reqMsg);
 };
