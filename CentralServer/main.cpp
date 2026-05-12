@@ -1,38 +1,30 @@
-#include "core/network/server.h"
 #include "core/database/databasemanager.h"
+#include "ui/serverwindow.h"
 
 #include <QApplication>
+#include <QDebug>
 
 int main(int argc, char *argv[])
 {
-    QApplication a(argc, argv);
+    QApplication app(argc, argv);
 
     DatabaseManager& dbManager = DatabaseManager::instance();
-
     QObject::connect(&dbManager, &DatabaseManager::connectionChanged,
                      [](bool connected) {
                          qDebug() << "Database connection changed:" << connected;
                      });
 
     if (!dbManager.initialize()) {
-        qCritical() << "数据库初始化失败，程序退出:"
-                    << dbManager.lastError();
+        qCritical() << "数据库初始化失败，程序退出:" << dbManager.lastError();
         return -1;
     }
 
-    Server server;
-    QObject::connect(&server, &Server::logMessage,
-                     [](const QString& msg) { qDebug() << "[Server]" << msg; });
-
-    if (!server.start()) {
+    ServerWindow window;
+    if (!window.startServer()) {
         qCritical() << "服务器启动失败";
         return -1;
     }
 
-    QSqlDatabase db = dbManager.getDatabase();//全局可用了
-    QSqlQuery query(db);
-
-    server.show();
-
-    return a.exec();
+    window.show();
+    return app.exec();
 }

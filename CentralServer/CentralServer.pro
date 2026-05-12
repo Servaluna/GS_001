@@ -16,7 +16,8 @@ SOURCES += \
     core/network/clienthandler.cpp \
     main.cpp \
     core/database/databasemanager.cpp \
-    core/network/server.cpp
+    core/network/server.cpp \
+    ui/serverwindow.cpp
 
 HEADERS += \
     ../Common/fileprotocol.h \
@@ -27,10 +28,11 @@ HEADERS += \
     core/database/databasemanager.h \
     core/services/userservice.h \
     core/network/clienthandler.h \
-    core/network/server.h
+    core/network/server.h \
+    ui/serverwindow.h
 
 FORMS += \
-    core/network/server.ui
+    ui/serverwindow.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

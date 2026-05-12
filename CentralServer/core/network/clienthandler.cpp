@@ -22,29 +22,25 @@ ClientHandler::~ClientHandler()
 {
     delete m_userService;
     delete m_userDao;
-    DEBUG_LOCATION << "ClientHandler 被删除:" << this;
 }
 
 void ClientHandler::onReadyRead()
 {
     while (true) {
         Message msg = receiveMessage(m_socket, m_buffer, m_expectedLength);
-
         if (!msg.isValid()) {
             break;
         }
 
         m_lastActiveTime = QDateTime::currentMSecsSinceEpoch();
-        DEBUG_LOCATION << "Session" << m_socket << "lastActiveTime:" << m_lastActiveTime;
 
         switch (msg.type) {
         case MessageType::LoginRequest:
             handleLoginRequest(msg);
-            DEBUG_LOCATION << "消息类型:" << msg.type;
             break;
 
         default:
-            DEBUG_LOCATION << "消息类型:" << msg.type;
+            emit logMessage(QString("收到未处理消息，类型: %1").arg(static_cast<int>(msg.type)));
             break;
         }
     }
@@ -77,15 +73,18 @@ void ClientHandler::handleLoginRequest(const Message& reqMsg)
         Message respMsg = Message::createResponse(reqMsg, loginResult.toResponseJson());
         sendMessage(m_socket, respMsg);
         emit loginSucceeded(loginResult.user.username, loginResult.user.role, loginResult.token);
-        DEBUG_LOCATION << loginResult.toResponseJson();
         return;
     }
 
-    emit logMessage(QString("登录失败: %1，原因: %2").arg(username, loginResult.errorMessage));
+    const QString reason = loginResult.errorMessage.isEmpty()
+        ? QString("用户名或密码错误")
+        : loginResult.errorMessage;
+
+    emit logMessage(QString("登录失败: %1，原因: %2").arg(username, reason));
     Message errorMsg = Message::createErrorResponse(
         reqMsg,
         StatusCode::PermissionDenied,
-        loginResult.errorMessage.isEmpty() ? "用户名或密码错误" : loginResult.errorMessage
+        reason
     );
     sendMessage(m_socket, errorMsg);
 }

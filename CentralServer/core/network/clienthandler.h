@@ -3,10 +3,10 @@
 
 #include "protocol.h"
 
+#include <QFileInfo>
+#include <QJsonObject>
 #include <QObject>
 #include <QTcpSocket>
-#include <QJsonObject>
-#include <QFileInfo>
 
 class UserDAO;
 class UserService;
@@ -28,15 +28,14 @@ private slots:
     void onDisconnected();
 
 private:
+    void handleLoginRequest(const Message& reqMsg);
+
     QTcpSocket* m_socket = nullptr;
     QByteArray m_buffer;
     quint32 m_expectedLength = 0;
     UserDAO* m_userDao = nullptr;
     UserService* m_userService = nullptr;
-
-    quint64 m_lastActiveTime = 0; // 保存毫秒级时间戳
-
-    void handleLoginRequest(const Message& reqMsg);
+    quint64 m_lastActiveTime = 0;
 };
 
 #endif // CLIENTHANDLER_H
