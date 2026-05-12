@@ -18,6 +18,7 @@ SOURCES += \
     core/dao/downloadcheckpointdao.cpp \
     core/dao/transfersessiondao.cpp \
     core/localdatabase/localdatabase.cpp \
+    core/logging/logger.cpp \
     core/network/deviceconnector.cpp \
     core/repository/taskrepository.cpp \
     core/services/taskservice.cpp \
@@ -39,6 +40,7 @@ HEADERS += \
     core/dao/devicetaskdao.h \
     core/dao/downloadcheckpointdao.h \
     core/localdatabase/localdatabase.h \
+    core/logging/logger.h \
     core/models/aircrafttask.h \
     core/models/devicetask.h \
     core/models/downloadtask.h \
@@ -57,11 +59,9 @@ HEADERS += \
     core/network/serverconnector.h
 
 FORMS += \
-    core/network/deviceconnector.ui \
     ui/deviceconnectorwindow.ui \
     ui/logindialog.ui \
-    ui/mainwindow.ui \
-    core/network/serverconnector.ui
+    ui/mainwindow.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

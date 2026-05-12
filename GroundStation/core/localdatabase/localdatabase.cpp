@@ -1,5 +1,7 @@
 #include "localdatabase.h"
 
+#include "../logging/logger.h"
+
 #include <QDir>
 #include <QFileInfo>
 #include <QSqlError>
@@ -43,7 +45,7 @@ bool LocalDatabase::init(const QString& dbPath)
     const QString dirPath = QFileInfo(dbPath).absolutePath();
     if (!dir.exists(dirPath) && !dir.mkpath(dirPath)) {
         m_lastError = "无法创建数据库目录: " + dirPath;
-        qWarning() << m_lastError;
+        Logger::error("DATABASE_INIT_FAILED", m_lastError, {{"db_path", dbPath}});
         return false;
     }
 
@@ -52,7 +54,7 @@ bool LocalDatabase::init(const QString& dbPath)
 
     if (!m_db.open()) {
         m_lastError = m_db.lastError().text();
-        qWarning() << "打开数据库失败:" << m_lastError;
+        Logger::error("DATABASE_OPEN_FAILED", "打开数据库失败", {{"db_path", dbPath}, {"error", m_lastError}});
         return false;
     }
 
@@ -61,10 +63,11 @@ bool LocalDatabase::init(const QString& dbPath)
     if (!createTables()) {
         m_isInitialized = false;
         m_lastError = "创建表失败";
+        Logger::error("DATABASE_INIT_FAILED", m_lastError, {{"db_path", dbPath}});
         return false;
     }
 
-    qDebug() << "gs_local 数据库初始化成功:" << dbPath;
+    Logger::info("DATABASE_READY", "gs_local 数据库初始化成功", {{"db_path", dbPath}});
     return true;
 }
 
@@ -79,14 +82,14 @@ void LocalDatabase::close()
 bool LocalDatabase::executeQuery(const QString& sql)
 {
     if (!m_isInitialized) {
-        qWarning() << "数据库未初始化";
+        Logger::warn("DATABASE_QUERY_REJECTED", "数据库未初始化");
         return false;
     }
 
     QSqlQuery query(m_db);
     if (!query.exec(sql)) {
         m_lastError = query.lastError().text();
-        qWarning() << "执行 SQL 失败:" << sql << "错误:" << m_lastError;
+        Logger::error("DATABASE_EXEC_FAILED", "执行 SQL 失败", {{"sql", sql}, {"error", m_lastError}});
         return false;
     }
     return true;
@@ -96,13 +99,13 @@ QSqlQuery LocalDatabase::executeQueryWithResult(const QString& sql)
 {
     QSqlQuery query(m_db);
     if (!m_isInitialized) {
-        qWarning() << "数据库未初始化";
+        Logger::warn("DATABASE_QUERY_REJECTED", "数据库未初始化");
         return query;
     }
 
     if (!query.exec(sql)) {
         m_lastError = query.lastError().text();
-        qWarning() << "查询 SQL 失败:" << sql << "错误:" << m_lastError;
+        Logger::error("DATABASE_QUERY_FAILED", "查询 SQL 失败", {{"sql", sql}, {"error", m_lastError}});
     }
     return query;
 }

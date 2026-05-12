@@ -1,6 +1,7 @@
 ﻿#include "downloadcheckpointdao.h"
 
 #include "../localdatabase/localdatabase.h"
+#include "../logging/logger.h"
 
 #include <QDateTime>
 #include <QSqlError>
@@ -28,7 +29,7 @@ QList<DownloadTask> readDownloadTasks(QSqlQuery& query)
 bool DownloadCheckpointDAO::upsert(const DownloadTask& task) const
 {
     if (!task.isValid()) {
-        qWarning() << "无效下载会话，无法保存";
+        Logger::warn("DATABASE_SAVE_REJECTED", "无效下载会话，无法保存");
         return false;
     }
 
@@ -61,7 +62,9 @@ bool DownloadCheckpointDAO::upsert(const DownloadTask& task) const
     query.bindValue(":error_message", task.error_message);
 
     if (!query.exec()) {
-        qWarning() << "保存下载会话失败:" << query.lastError().text();
+        Logger::error("DATABASE_SAVE_FAILED",
+                      "保存下载会话失败",
+                      {{"download_session_id", task.task_uuid}, {"error", query.lastError().text()}});
         return false;
     }
     return true;
@@ -100,7 +103,9 @@ QList<DownloadTask> DownloadCheckpointDAO::getByOwner(int ownerUserId) const
     query.bindValue(":owner_user_id", ownerUserId);
 
     if (!query.exec()) {
-        qWarning() << "查询用户下载会话失败:" << query.lastError().text();
+        Logger::error("DATABASE_QUERY_FAILED",
+                      "查询用户下载会话失败",
+                      {{"owner_user_id", ownerUserId}, {"error", query.lastError().text()}});
         return {};
     }
     return readDownloadTasks(query);
@@ -113,7 +118,9 @@ QList<DownloadTask> DownloadCheckpointDAO::getByStatus(DownloadSessionStatus sta
     query.bindValue(":status", TaskStatusText::toInt(status));
 
     if (!query.exec()) {
-        qWarning() << "按状态查询下载会话失败:" << query.lastError().text();
+        Logger::error("DATABASE_QUERY_FAILED",
+                      "按状态查询下载会话失败",
+                      {{"status", TaskStatusText::toInt(status)}, {"error", query.lastError().text()}});
         return {};
     }
     return readDownloadTasks(query);

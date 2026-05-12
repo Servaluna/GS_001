@@ -1,4 +1,6 @@
-﻿#include "serverconnector.h"
+#include "serverconnector.h"
+
+#include "../logging/logger.h"
 
 ServerConnector::ServerConnector(QObject *parent)
     : QObject(parent)
@@ -26,12 +28,16 @@ ServerConnector& ServerConnector::instance()
 bool ServerConnector::connectToServer(const QString& host, quint16 port)
 {
     if (isConnected() && m_host == host && m_port == port) {
-        DEBUG_LOCATION << "已经连接到服务器" << host << ":" << port;
+        Logger::debug("SERVER_ALREADY_CONNECTED",
+                      QString("已经连接到服务器 %1:%2").arg(host).arg(port),
+                      {{"host", host}, {"port", port}});
         return true;
     }
 
     if (isConnected()) {
-        DEBUG_LOCATION << "断开当前连接，准备连接到新服务器";
+        Logger::info("SERVER_RECONNECT",
+                     "断开当前服务器连接，准备连接到新服务器",
+                     {{"old_host", m_host}, {"old_port", m_port}, {"new_host", host}, {"new_port", port}});
         m_pendingHost = host;
         m_pendingPort = port;
         m_pendingConnection = true;
@@ -68,7 +74,7 @@ void ServerConnector::cleanupSocket()
     m_socket->close();
     m_socket->deleteLater();
     m_socket = nullptr;
-    DEBUG_LOCATION << "socket 清理完成";
+    Logger::debug("SERVER_SOCKET_CLEANED", "服务器连接 socket 已清理");
 }
 
 void ServerConnector::doConnect(const QString& host, quint16 port)
@@ -80,13 +86,17 @@ void ServerConnector::doConnect(const QString& host, quint16 port)
 
 void ServerConnector::onConnected()
 {
-    DEBUG_LOCATION << "客户端已连接到服务器" << m_host << ":" << m_port << "socket:" << m_socket;
+    Logger::info("SERVER_CONNECTED",
+                 QString("客户端已连接到服务器 %1:%2").arg(m_host).arg(m_port),
+                 {{"host", m_host}, {"port", m_port}});
     emit connected();
 }
 
 void ServerConnector::onDisconnected()
 {
-    DEBUG_LOCATION << "与服务器断开连接";
+    Logger::warn("SERVER_DISCONNECTED",
+                 QString("与服务器 %1:%2 断开连接").arg(m_host).arg(m_port),
+                 {{"host", m_host}, {"port", m_port}});
     emit disconnected();
 
     if (m_pendingConnection) {
@@ -98,8 +108,9 @@ void ServerConnector::onDisconnected()
 void ServerConnector::onErrorOccurred(QAbstractSocket::SocketError error)
 {
     const QString errorMsg = m_socket ? m_socket->errorString() : QString("Socket 不存在");
-    qCritical() << "网络错误状态码:" << error;
-    qCritical() << "网络错误信息:" << errorMsg;
+    Logger::error("SERVER_NETWORK_ERROR",
+                  "服务器连接发生网络错误",
+                  {{"host", m_host}, {"port", m_port}, {"error_code", static_cast<int>(error)}, {"error_message", errorMsg}});
     emit errorOccurred(errorMsg);
 }
 
@@ -112,12 +123,10 @@ void ServerConnector::onReadyRead()
         }
 
         m_lastActiveTime = QDateTime::currentMSecsSinceEpoch();
-        DEBUG_LOCATION << "Session" << m_socket << "lastActiveTime:" << m_lastActiveTime;
 
         switch (msg.type) {
         case MessageType::LoginResponse:
             handleLoginResponse(msg);
-            DEBUG_LOCATION << "消息类型:" << msg.type;
             break;
 
         case MessageType::TaskFileInfo:
@@ -140,12 +149,15 @@ void ServerConnector::onReadyRead()
             if (errorMsg.isEmpty()) {
                 errorMsg = "Unknown server error";
             }
+            Logger::error("SERVER_MESSAGE_ERROR", errorMsg);
             emit errorOccurred(errorMsg);
             break;
         }
 
         default:
-            DEBUG_LOCATION << "未处理的消息类型:" << msg.type;
+            Logger::debug("SERVER_MESSAGE_IGNORED",
+                          "收到未处理的服务器消息类型",
+                          {{"message_type", static_cast<int>(msg.type)}});
             break;
         }
     }
@@ -154,7 +166,8 @@ void ServerConnector::onReadyRead()
 void ServerConnector::loginRequest(const QString& username, const QString& password)
 {
     if (!isConnected()) {
-        emit errorOccurred("Not connected to server");
+        Logger::warn("AUTH_LOGIN_REQUEST_FAILED", "未连接服务器，无法发送登录请求", {{"username", username}});
+        emit errorOccurred("未连接到服务器");
         return;
     }
 
@@ -166,17 +179,21 @@ void ServerConnector::loginRequest(const QString& username, const QString& passw
     reqMsg.type = MessageType::LoginRequest;
     reqMsg.data = data;
 
-    sendMessage(m_socket, reqMsg);
-
-    DEBUG_LOCATION << "发送登录请求:" << username
-                   << "reqMsg.type:" << reqMsg.type
-                   << "reqMsg.data:" << reqMsg.data;
+    if (sendMessage(m_socket, reqMsg)) {
+        Logger::info("AUTH_LOGIN_REQUEST", "发送登录请求", {{"username", username}});
+    } else {
+        Logger::error("AUTH_LOGIN_REQUEST_FAILED", "登录请求发送失败", {{"username", username}});
+        emit errorOccurred("登录请求发送失败");
+    }
 }
 
 bool ServerConnector::fileDownloadRequest(const QString& fileCode, qint64 offset, const QString& taskUuid)
 {
     if (!isConnected()) {
-        emit errorOccurred("Not connected to server");
+        Logger::warn("DOWNLOAD_REQUEST_FAILED",
+                     "未连接服务器，无法请求下载文件",
+                     {{"file_code", fileCode}, {"task_uuid", taskUuid}, {"offset", offset}});
+        emit errorOccurred("未连接到服务器");
         return false;
     }
 
@@ -187,7 +204,17 @@ bool ServerConnector::fileDownloadRequest(const QString& fileCode, qint64 offset
     data["task_uuid"] = taskUuid;
 
     Message reqMsg(MessageType::GetTaskFile, data);
-    return sendMessage(m_socket, reqMsg);
+    const bool ok = sendMessage(m_socket, reqMsg);
+    if (ok) {
+        Logger::info("DOWNLOAD_REQUEST",
+                     "发送文件下载请求",
+                     {{"file_code", fileCode}, {"task_uuid", taskUuid}, {"offset", offset}});
+    } else {
+        Logger::error("DOWNLOAD_REQUEST_FAILED",
+                      "文件下载请求发送失败",
+                      {{"file_code", fileCode}, {"task_uuid", taskUuid}, {"offset", offset}});
+    }
+    return ok;
 }
 
 void ServerConnector::handleLoginResponse(const Message& respMsg)
@@ -195,5 +222,8 @@ void ServerConnector::handleLoginResponse(const Message& respMsg)
     const QString token = respMsg.data["token"].toString();
     const UserInfo user = UserInfo::fromJson(respMsg.data["user"].toObject());
 
+    Logger::info("AUTH_LOGIN_RESPONSE",
+                 "收到登录成功响应",
+                 {{"username", user.username}, {"role", user.role}, {"user_id", user.user_id}});
     emit loginSuccess(token, user);
 }

@@ -15,6 +15,7 @@ struct ClientInfo {
     ClientHandler* handler;     //处理器
 
     bool isLoggedIn;        // 是否已登录
+    bool isDisconnected;    // 是否已断开
     QString username;          // 登录用户名
     QString role;              // 用户角色
     QString token;             // 认证token
@@ -28,6 +29,7 @@ struct ClientInfo {
         port = 0;
         connectTime = QDateTime::currentDateTime();
         isLoggedIn = false;
+        isDisconnected = false;
     }
 
     ClientInfo(QTcpSocket* socket) {
@@ -36,6 +38,7 @@ struct ClientInfo {
         connectTime = QDateTime::currentDateTime();
         handler = nullptr;
         isLoggedIn = false;
+        isDisconnected = false;
     }
 };
 
@@ -67,6 +70,7 @@ private slots:
     // 处理 ClientHandler 的信号
     void onClientLog(const QString& msg);
     void onClientFinished(ClientHandler* handler);
+    void onClientLoginSucceeded(QString username, QString role, QString token);
 
 private:
     void updateClientList();           // 更新客户端列表显示

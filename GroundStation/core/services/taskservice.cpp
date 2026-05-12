@@ -1,5 +1,6 @@
 #include "taskservice.h"
 
+#include "../logging/logger.h"
 #include "../repository/taskrepository.h"
 #include "../domain/download/downloadmanager.h"
 #include "../domain/scheduler/taskscheduler.h"
@@ -29,7 +30,7 @@ TaskService::~TaskService()
 bool TaskService::init(ServerConnector* serverConnector, DeviceConnector* deviceConnector)
 {
     if (!serverConnector || !deviceConnector) {
-        qCritical() << "TaskService::init - invalid dependency";
+        Logger::error("TASK_SERVICE_INIT_FAILED", "TaskService 初始化失败，依赖为空");
         return false;
     }
 
@@ -56,6 +57,7 @@ bool TaskService::init(ServerConnector* serverConnector, DeviceConnector* device
             this, &TaskService::queueStatusChanged);
 
     m_initialized = true;
+    Logger::info("TASK_SERVICE_READY", "任务服务初始化完成");
     return true;
 }
 
@@ -63,6 +65,7 @@ void TaskService::start()
 {
     if (m_initialized) {
         m_scheduler->start();
+        Logger::info("TASK_SERVICE_START", "任务服务启动");
     }
 }
 
@@ -70,6 +73,7 @@ void TaskService::stop()
 {
     if (m_initialized) {
         m_scheduler->stop();
+        Logger::info("TASK_SERVICE_STOP", "任务服务停止");
     }
 }
 
@@ -88,20 +92,44 @@ QList<AircraftTask> TaskService::getExecutableAircraftTasksForUser(int userId, c
 
 bool TaskService::startTask(const QString& taskId)
 {
-    return m_initialized && m_scheduler->startTask(taskId);
+    if (!m_initialized) {
+        Logger::warn("TASK_START_REJECTED", "任务服务未初始化，无法启动任务", {{"aircraft_task_id", taskId}});
+        return false;
+    }
+
+    Logger::info("TASK_START_REQUEST", QString("请求启动飞机任务 %1").arg(taskId), {{"aircraft_task_id", taskId}});
+    return m_scheduler->startTask(taskId);
 }
 
 bool TaskService::pauseTask(const QString& taskId)
 {
-    return m_initialized && m_scheduler->pauseTask(taskId);
+    if (!m_initialized) {
+        Logger::warn("TASK_PAUSE_REJECTED", "任务服务未初始化，无法暂停任务", {{"aircraft_task_id", taskId}});
+        return false;
+    }
+
+    Logger::info("TASK_PAUSE_REQUEST", QString("请求暂停飞机任务 %1").arg(taskId), {{"aircraft_task_id", taskId}});
+    return m_scheduler->pauseTask(taskId);
 }
 
 bool TaskService::resumeTask(const QString& taskId)
 {
-    return m_initialized && m_scheduler->resumeTask(taskId);
+    if (!m_initialized) {
+        Logger::warn("TASK_RESUME_REJECTED", "任务服务未初始化，无法恢复任务", {{"aircraft_task_id", taskId}});
+        return false;
+    }
+
+    Logger::info("TASK_RESUME_REQUEST", QString("请求恢复飞机任务 %1").arg(taskId), {{"aircraft_task_id", taskId}});
+    return m_scheduler->resumeTask(taskId);
 }
 
 bool TaskService::cancelTask(const QString& taskId)
 {
-    return m_initialized && m_scheduler->cancelTask(taskId);
+    if (!m_initialized) {
+        Logger::warn("TASK_CANCEL_REJECTED", "任务服务未初始化，无法取消任务", {{"aircraft_task_id", taskId}});
+        return false;
+    }
+
+    Logger::warn("TASK_CANCEL_REQUEST", QString("请求取消飞机任务 %1").arg(taskId), {{"aircraft_task_id", taskId}});
+    return m_scheduler->cancelTask(taskId);
 }

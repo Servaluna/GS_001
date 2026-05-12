@@ -8,6 +8,7 @@ deviceconnectorwindow::deviceconnectorwindow(QWidget *parent)
     , m_connector(nullptr)
 {
     ui->setupUi(this);
+    setWindowFlag(Qt::Window, true);
     setAttribute(Qt::WA_DeleteOnClose);
     this->setWindowTitle("连接设备");
 }
@@ -18,6 +19,7 @@ deviceconnectorwindow::deviceconnectorwindow(DeviceConnector* connector, QWidget
     , m_connector(connector)
 {
     ui->setupUi(this);
+    setWindowFlag(Qt::Window, true);
     setAttribute(Qt::WA_DeleteOnClose);
     this->setWindowTitle("连接设备");
 

@@ -1,14 +1,11 @@
 ﻿#include "mainwindow.h"
 #include "ui_mainwindow.h"
 
+#include "../core/logging/logger.h"
 #include "../core/services/taskservice.h"
 
-#include <QDebug>
-#include <QFileInfo>
 #include <QHeaderView>
 #include <QStatusBar>
-
-#define DEBUG_LOCATION qDebug().nospace() << "[" << Q_FUNC_INFO << " @ " << QFileInfo(__FILE__).fileName() << ":" << __LINE__ << "]"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -36,8 +33,6 @@ MainWindow::~MainWindow()
 
 void MainWindow::initUI()
 {
-    DEBUG_LOCATION;
-
     QString title = QString("地面站系统 - [%1]").arg(m_userInfo.role);
     setWindowTitle(title);
 
@@ -190,7 +185,10 @@ void MainWindow::onTaskItemClicked(QTableWidgetItem *item)
 
     const int row = item->row();
     const QString taskId = ui->tableTask->item(row, 1)->text();
-    qDebug() << "选中飞机任务:" << taskId;
+    LogContext context;
+    context.operator_user_id = m_userInfo.user_id;
+    context.aircraft_task_id = taskId.toInt();
+    Logger::debug("TASK_SELECTED", QString("选中飞机升级任务 %1").arg(taskId), context);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
@@ -206,7 +204,9 @@ void MainWindow::closeEvent(QCloseEvent *event)
     }
 
     event->accept();
-    DEBUG_LOCATION << QString("用户 %1 退出程序").arg(m_userInfo.username);
+    Logger::info("APP_EXIT",
+                 QString("用户 %1 退出程序").arg(m_userInfo.username),
+                 {{"username", m_userInfo.username}, {"role", m_userInfo.role}});
 }
 
 void MainWindow::on_btnExecute_clicked()
@@ -233,10 +233,18 @@ void MainWindow::on_btnStartAircraftTask_clicked()
     }
 
     if (!m_taskService || !m_taskService->startTask(taskId)) {
+        LogContext context;
+        context.operator_user_id = m_userInfo.user_id;
+        context.aircraft_task_id = taskId.toInt();
+        Logger::warn("TASK_START_REJECTED", QString("启动飞机升级任务失败: %1").arg(taskId), context);
         QMessageBox::warning(this, "执行任务", "启动飞机升级任务失败，请检查任务状态和设备子任务。");
         return;
     }
 
+    LogContext context;
+    context.operator_user_id = m_userInfo.user_id;
+    context.aircraft_task_id = taskId.toInt();
+    Logger::info("TASK_START_SUBMITTED", QString("用户启动飞机升级任务: %1").arg(taskId), context);
     statusBar()->showMessage(QString("已启动飞机升级任务: %1").arg(taskId), 5000);
     loadExecutableTasks();
 }

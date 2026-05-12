@@ -1,7 +1,9 @@
 ﻿#include "deviceconnector.h"
 
-#include <QTimer>
+#include "../logging/logger.h"
+
 #include <QDateTime>
+#include <QTimer>
 
 DeviceConnector::DeviceConnector(QObject *parent)
     : QObject(parent)
@@ -12,10 +14,6 @@ DeviceConnector::DeviceConnector(QObject *parent)
     , m_fileSize(0)
     , m_sentBytes(0)
 {
-    // setAttribute(Qt::WA_DeleteOnClose);
-
-    // this->setWindowTitle("连接设备");
-
     m_socket = new QTcpSocket(this);
 
     connect(m_socket, &QTcpSocket::connected,
@@ -40,19 +38,21 @@ DeviceConnector::~DeviceConnector()
 bool DeviceConnector::connectToCMC(const QString& ip, quint16 port)
 {
     if (m_isConnected) {
-        qDebug() << "DeviceConnector: Already connected to CMC";
+        Logger::debug("CMC_ALREADY_CONNECTED", "已经连接到 CMC", {{"ip", m_cmcIp}, {"port", m_cmcPort}});
         return true;
     }
 
     if (m_socket->state() == QAbstractSocket::ConnectingState) {
-        qDebug() << "DeviceConnector: Already connecting to CMC";
+        Logger::debug("CMC_CONNECT_PENDING", "正在连接 CMC", {{"ip", m_cmcIp}, {"port", m_cmcPort}});
         return false;
     }
 
     m_cmcIp = ip;
     m_cmcPort = port;
 
-    qDebug() << "DeviceConnector: Connecting to CMC at" << ip << ":" << port;
+    Logger::info("CMC_CONNECT_START",
+                 QString("开始连接 CMC %1:%2").arg(ip).arg(port),
+                 {{"ip", ip}, {"port", port}});
     m_socket->connectToHost(ip, port);
     return true;
 }
@@ -78,14 +78,18 @@ void DeviceConnector::sendFileToDevice(const QString& taskId,
                                        const QString& sha256)
 {
     if (!m_isConnected) {
-        qWarning() << "DeviceConnector: Not connected to CMC, cannot send file";
+        Logger::warn("TRANSFER_START_FAILED",
+                     "未连接 CMC，无法发送文件",
+                     {{"device_task_id", taskId}, {"target_device_id", targetDeviceId}});
         emit sendFinished(taskId, false, "未连接到 CMC");
         return;
     }
 
     // 检查目标设备是否在线，从本地缓存查询。
     if (!isDeviceOnline(targetDeviceId)) {
-        qWarning() << "DeviceConnector: Target device not online:" << targetDeviceId;
+        Logger::warn("TRANSFER_START_FAILED",
+                     "目标设备不在线",
+                     {{"device_task_id", taskId}, {"target_device_id", targetDeviceId}});
         emit sendFinished(taskId, false, QString("目标设备 %1 不在线").arg(targetDeviceId));
         return;
     }
@@ -93,14 +97,18 @@ void DeviceConnector::sendFileToDevice(const QString& taskId,
     // 检查本地文件
     QFile* file = new QFile(localPath, this);
     if (!file->exists()) {
-        qWarning() << "DeviceConnector: File not found:" << localPath;
+        Logger::error("TRANSFER_START_FAILED",
+                      "本地文件不存在",
+                      {{"device_task_id", taskId}, {"local_path", localPath}});
         emit sendFinished(taskId, false, "本地文件不存在");
         delete file;
         return;
     }
 
     if (!file->open(QIODevice::ReadOnly)) {
-        qWarning() << "DeviceConnector: Cannot open file:" << localPath;
+        Logger::error("TRANSFER_START_FAILED",
+                      "无法打开本地文件",
+                      {{"device_task_id", taskId}, {"local_path", localPath}});
         emit sendFinished(taskId, false, "无法打开本地文件");
         delete file;
         return;
@@ -117,15 +125,15 @@ void DeviceConnector::sendFileToDevice(const QString& taskId,
     m_sentBytes = 0;
     m_fileSha256 = sha256;
 
-    qDebug() << "DeviceConnector: Starting file send - taskId:" << taskId
-             << "targetDevice:" << targetDeviceId
-             << "fileName:" << fileName
-             << "fileSize:" << m_fileSize
-             << "sha256:" << sha256;
+    Logger::info("TRANSFER_FILE_OPENED",
+                 "本地文件已打开，准备发送文件开始命令",
+                 {{"device_task_id", taskId}, {"target_device_id", targetDeviceId}, {"file_name", fileName}, {"file_size", m_fileSize}, {"sha256", sha256}});
 
     // 发送文件开始命令
     if (!sendFileStart(taskId, targetDeviceId, fileName, m_fileSize, sha256)) {
-        qCritical() << "DeviceConnector: Failed to send FileStart command";
+        Logger::error("TRANSFER_START_FAILED",
+                      "发送文件开始命令失败",
+                      {{"device_task_id", taskId}, {"target_device_id", targetDeviceId}});
         emit sendFinished(taskId, false, "发送文件开始命令失败");
         cleanupFileTransfer();
         return;
@@ -161,14 +169,18 @@ bool DeviceConnector::isDeviceOnline(const QString& deviceId) const
 void DeviceConnector::onConnected()
 {
     m_isConnected = true;
-    qDebug() << "DeviceConnector: Connected to CMC successfully";
+    Logger::info("CMC_CONNECTED",
+                 QString("CMC 连接成功 %1:%2").arg(m_cmcIp).arg(m_cmcPort),
+                 {{"ip", m_cmcIp}, {"port", m_cmcPort}});
     emit cmcConnectionChanged(true, QString());
 }
 
 void DeviceConnector::onDisconnected()
 {
     m_isConnected = false;
-    qDebug() << "DeviceConnector: Disconnected from CMC";
+    Logger::warn("CMC_DISCONNECTED",
+                 QString("与 CMC %1:%2 断开连接").arg(m_cmcIp).arg(m_cmcPort),
+                 {{"ip", m_cmcIp}, {"port", m_cmcPort}});
 
     // 清理所有状态
     m_deviceStatusMap.clear();
@@ -180,7 +192,9 @@ void DeviceConnector::onDisconnected()
 void DeviceConnector::onErrorOccurred(QAbstractSocket::SocketError socketError)
 {
     QString errorMsg = m_socket->errorString();
-    qWarning() << "DeviceConnector: Socket error:" << errorMsg << "(code:" << socketError << ")";
+    Logger::error("CMC_NETWORK_ERROR",
+                  "CMC 连接发生网络错误",
+                  {{"ip", m_cmcIp}, {"port", m_cmcPort}, {"error_code", static_cast<int>(socketError)}, {"error_message", errorMsg}});
 
     m_isConnected = false;
     emit cmcConnectionChanged(false, errorMsg);
@@ -196,8 +210,6 @@ void DeviceConnector::onReadyRead()
     QByteArray payload;
 
     while (parsePacket(m_receiveBuffer, cmd, payload)) {
-        qDebug() << "DeviceConnector: Received command:" << static_cast<int>(cmd);
-
         switch (cmd) {
         case Command::DeviceStatusFull:
             handleDeviceStatusFull(payload);
@@ -216,11 +228,13 @@ void DeviceConnector::onReadyRead()
             break;
 
         case Command::Error:
-            qWarning() << "DeviceConnector: Received error from CMC:" << QString::fromUtf8(payload);
+            Logger::error("CMC_MESSAGE_ERROR", QString::fromUtf8(payload));
             break;
 
         default:
-            qWarning() << "DeviceConnector: Unknown command:" << static_cast<int>(cmd);
+            Logger::warn("CMC_MESSAGE_IGNORED",
+                         "收到未知 CMC 命令",
+                         {{"command", static_cast<int>(cmd)}});
             break;
         }
     }
@@ -229,7 +243,7 @@ void DeviceConnector::onReadyRead()
 void DeviceConnector::onSendFileData()
 {
     if (!m_currentFile || !m_currentFile->isOpen()) {
-        qWarning() << "DeviceConnector: No active file transfer";
+        Logger::warn("TRANSFER_SEND_FAILED", "没有正在进行的文件传输");
         return;
     }
 
@@ -239,20 +253,22 @@ void DeviceConnector::onSendFileData()
     if (data.isEmpty()) {
         // 文件读取完成，发送 FileEnd 命令。
         if (m_sentBytes == m_fileSize) {
-            qDebug() << "DeviceConnector: File read complete, sent:" << m_sentBytes
-                     << "of" << m_fileSize;
-
             if (sendFileEnd()) {
-                qDebug() << "DeviceConnector: FileEnd command sent, waiting for CMC response";
+                Logger::info("TRANSFER_FILE_SENT",
+                             "文件数据已发送完成，等待 CMC 接收结果",
+                             {{"device_task_id", m_currentTaskId}, {"sent_bytes", m_sentBytes}, {"total_size", m_fileSize}});
             } else {
-                qCritical() << "DeviceConnector: Failed to send FileEnd command";
+                Logger::error("TRANSFER_SEND_FAILED",
+                              "发送文件结束命令失败",
+                              {{"device_task_id", m_currentTaskId}});
                 emit sendFinished(m_currentTaskId, false, "发送文件结束命令失败");
                 cleanupFileTransfer();
             }
         } else {
             // 文件读取错误
-            qCritical() << "DeviceConnector: File read error, sent:" << m_sentBytes
-                        << "expected:" << m_fileSize;
+            Logger::error("TRANSFER_SEND_FAILED",
+                          "文件读取错误",
+                          {{"device_task_id", m_currentTaskId}, {"sent_bytes", m_sentBytes}, {"expected_size", m_fileSize}});
             emit sendFinished(m_currentTaskId, false, "文件读取错误");
             cleanupFileTransfer();
         }
@@ -264,15 +280,14 @@ void DeviceConnector::onSendFileData()
         m_sentBytes += data.size();
         int progress = static_cast<int>((m_sentBytes * 100) / m_fileSize);
 
-        qDebug() << "DeviceConnector: Sent data chunk, progress:" << progress
-                 << "% (" << m_sentBytes << "/" << m_fileSize << ")";
-
         emit sendProgress(m_currentTaskId, m_sentBytes, m_fileSize, progress);
 
         // 继续发送下一块
         QTimer::singleShot(SEND_INTERVAL_MS, this, &DeviceConnector::onSendFileData);
     } else {
-        qCritical() << "DeviceConnector: Failed to send data chunk";
+        Logger::error("TRANSFER_SEND_FAILED",
+                      "发送文件数据失败",
+                      {{"device_task_id", m_currentTaskId}, {"sent_bytes", m_sentBytes}, {"total_size", m_fileSize}});
         emit sendFinished(m_currentTaskId, false, "发送数据失败");
         cleanupFileTransfer();
     }
@@ -283,7 +298,9 @@ void DeviceConnector::onSendFileData()
 bool DeviceConnector::sendCommand(Command cmd, const QByteArray& data)
 {
     if (!m_socket || m_socket->state() != QAbstractSocket::ConnectedState) {
-        qWarning() << "DeviceConnector: Socket not connected, cannot send command";
+        Logger::warn("CMC_COMMAND_SEND_FAILED",
+                     "CMC socket 未连接，无法发送命令",
+                     {{"command", static_cast<int>(cmd)}});
         return false;
     }
 
@@ -291,8 +308,9 @@ bool DeviceConnector::sendCommand(Command cmd, const QByteArray& data)
     qint64 written = m_socket->write(packet);
 
     if (written != packet.size()) {
-        qWarning() << "DeviceConnector: Incomplete write, wrote:" << written
-                   << "expected:" << packet.size();
+        Logger::warn("CMC_COMMAND_SEND_FAILED",
+                     "CMC 命令写入不完整",
+                     {{"command", static_cast<int>(cmd)}, {"written", written}, {"expected", packet.size()}});
         return false;
     }
 
@@ -332,18 +350,16 @@ bool DeviceConnector::sendFileStart(const QString& taskId,
     stream << static_cast<quint16>(sha256Bytes.size());
     stream.writeRawData(sha256Bytes.data(), sha256Bytes.size());
 
-    qDebug() << "DeviceConnector: Sending FileStart - taskId:" << taskId
-             << "targetDevice:" << targetDeviceId
-             << "fileName:" << fileName
-             << "size:" << fileSize
-             << "sha256:" << sha256;
+    Logger::info("TRANSFER_FILE_START",
+                 "发送文件开始命令",
+                 {{"device_task_id", taskId}, {"target_device_id", targetDeviceId}, {"file_name", fileName}, {"file_size", fileSize}, {"sha256", sha256}});
 
     return sendCommand(Command::FileStart, data);
 }
 
 bool DeviceConnector::sendFileEnd()
 {
-    qDebug() << "DeviceConnector: Sending FileEnd for task:" << m_currentTaskId;
+    Logger::info("TRANSFER_FILE_END", "发送文件结束命令", {{"device_task_id", m_currentTaskId}});
     return sendCommand(Command::FileEnd);
 }
 
@@ -393,7 +409,7 @@ bool DeviceConnector::parsePacket(const QByteArray& data, Command& cmd, QByteArr
     stream >> startMark;
 
     if (startMark != PACKET_START_MARK) {
-        qWarning() << "DeviceConnector: Invalid packet start mark:" << startMark;
+        Logger::warn("CMC_PACKET_INVALID", "CMC 数据包起始标志无效", {{"start_mark", startMark}});
         // 跳过这个字节，尝试重新同步。
         m_receiveBuffer.remove(0, 1);
         return false;
@@ -432,8 +448,9 @@ bool DeviceConnector::parsePacket(const QByteArray& data, Command& cmd, QByteArr
     }
 
     if (calculatedChecksum != receivedChecksum) {
-        qWarning() << "DeviceConnector: Checksum mismatch, expected:"
-                   << calculatedChecksum << "got:" << receivedChecksum;
+        Logger::warn("CMC_PACKET_INVALID",
+                     "CMC 数据包校验和不匹配",
+                     {{"expected_checksum", calculatedChecksum}, {"received_checksum", receivedChecksum}});
         m_receiveBuffer.clear();
         return false;
     }
@@ -454,7 +471,9 @@ void DeviceConnector::handleDeviceStatusFull(const QByteArray& payload)
     quint16 deviceCount;
     stream >> deviceCount;
 
-    qDebug() << "DeviceConnector: Received full device status, count:" << deviceCount;
+    Logger::info("CMC_DEVICE_STATUS_FULL",
+                 "收到 CMC 全量设备状态",
+                 {{"device_count", deviceCount}});
 
     QList<DeviceStatus> devices;
     m_deviceStatusMap.clear();
@@ -497,11 +516,6 @@ void DeviceConnector::handleDeviceStatusFull(const QByteArray& payload)
 
         m_deviceStatusMap[status.deviceId] = status;
         devices.append(status);
-
-        qDebug() << "  Device:" << status.deviceId
-                 << "name:" << status.deviceName
-                 << "online:" << status.isOnline
-                 << "version:" << status.version;
     }
 
     emit deviceStatusFullUpdated(devices);
@@ -515,7 +529,9 @@ void DeviceConnector::handleDeviceStatusUpdate(const QByteArray& payload)
     quint16 updateCount;
     stream >> updateCount;
 
-    qDebug() << "DeviceConnector: Received device status update, count:" << updateCount;
+    Logger::debug("CMC_DEVICE_STATUS_UPDATE",
+                  "收到 CMC 增量设备状态",
+                  {{"update_count", updateCount}});
 
     QList<DeviceStatus> updates;
 
@@ -548,16 +564,14 @@ void DeviceConnector::handleDeviceStatusUpdate(const QByteArray& payload)
             status.deviceName = m_deviceStatusMap[status.deviceId].deviceName;
             status.version = m_deviceStatusMap[status.deviceId].version;
         } else {
-            qWarning() << "DeviceConnector: Unknown device in update:" << status.deviceId;
+            Logger::warn("CMC_DEVICE_STATUS_UNKNOWN",
+                         "收到未知设备的状态更新",
+                         {{"device_code", status.deviceId}});
             // 没有基础信息，跳过。
             continue;
         }
 
         updates.append(status);
-
-        qDebug() << "  Device:" << status.deviceId
-                 << "online:" << status.isOnline
-                 << "time:" << status.lastUpdateTime;
     }
 
     emit deviceStatusIncrementalUpdated(updates);
@@ -586,14 +600,16 @@ void DeviceConnector::handleFileReceiveResult(const QByteArray& payload)
     stream.readRawData(msgBytes.data(), msgSize);
     QString message = QString::fromUtf8(msgBytes);
 
-    qDebug() << "DeviceConnector: File receive result - taskId:" << taskId
-             << "success:" << (success == 1)
-             << "message:" << message;
+    Logger::info(success == 1 ? "TRANSFER_ACCEPTED" : "TRANSFER_REJECTED",
+                 success == 1 ? "CMC 已接收文件" : "CMC 拒绝接收文件",
+                 {{"device_task_id", taskId}, {"message", message}});
 
     emit sendFinished(taskId, success == 1, message);
 
     if (success == 1) {
-        qDebug() << "DeviceConnector: File accepted by CMC, waiting for install result from device";
+        Logger::info("INSTALL_WAITING",
+                     "等待设备安装结果",
+                     {{"device_task_id", taskId}});
     } else {
         // 文件接收失败，清理传输资源。
         cleanupFileTransfer();
@@ -630,10 +646,9 @@ void DeviceConnector::handleInstallResult(const QByteArray& payload)
     stream.readRawData(msgBytes.data(), msgSize);
     QString message = QString::fromUtf8(msgBytes);
 
-    qDebug() << "DeviceConnector: Install result - taskId:" << taskId
-             << "deviceId:" << deviceId
-             << "success:" << (success == 1)
-             << "message:" << message;
+    Logger::info(success == 1 ? "INSTALL_RESULT_SUCCESS" : "INSTALL_RESULT_FAILED",
+                 success == 1 ? "收到设备安装成功结果" : "收到设备安装失败结果",
+                 {{"device_task_id", taskId}, {"device_code", deviceId}, {"message", message}});
 
     emit installResult(taskId, deviceId, success == 1, message);
 
@@ -656,31 +671,4 @@ void DeviceConnector::cleanupFileTransfer()
     m_fileSize = 0;
     m_sentBytes = 0;
     m_fileSha256.clear();
-
-    qDebug() << "DeviceConnector: File transfer cleaned up";
 }
-
-
-
-
-
-
-// void DeviceConnector::on_btnCancel_clicked()
-// {
-//     this -> close();
-// }
-
-// void DeviceConnector::on_btnConnect_clicked()
-// {
-//     QString IP = ui ->lineEditIP ->text();
-//     QString Port = ui ->lineEditPort ->text();
-
-//     m_socket ->connectToHost(QHostAddress(IP),Port.toUShort());
-
-//     connect(m_socket , &QTcpSocket::connected,[this](){
-//         QMessageBox::information(this, "连接提示", "连接服务器成功");
-//     });
-//     connect(m_socket , &QTcpSocket::disconnected,[this](){
-//         QMessageBox::warning(this, "连接提示", "网络异常，连接失败");
-//     });
-// }

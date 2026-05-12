@@ -1,6 +1,7 @@
 ﻿#include "devicetaskdao.h"
 
 #include "../localdatabase/localdatabase.h"
+#include "../logging/logger.h"
 
 #include <QDateTime>
 #include <QSqlError>
@@ -28,7 +29,7 @@ QList<DeviceTask> readDeviceTasks(QSqlQuery& query)
 bool DeviceTaskDAO::upsert(const DeviceTask& task) const
 {
     if (!task.isValid()) {
-        qWarning() << "无效设备任务，无法保存";
+        Logger::warn("DATABASE_SAVE_REJECTED", "无效设备任务，无法保存");
         return false;
     }
 
@@ -74,7 +75,9 @@ bool DeviceTaskDAO::upsert(const DeviceTask& task) const
     query.bindValue(":last_error", task.last_error);
 
     if (!query.exec()) {
-        qWarning() << "保存设备任务失败:" << query.lastError().text();
+        Logger::error("DATABASE_SAVE_FAILED",
+                      "保存设备任务失败",
+                      {{"device_task_id", task.device_task_id}, {"error", query.lastError().text()}});
         return false;
     }
     return true;
@@ -111,7 +114,9 @@ QList<DeviceTask> DeviceTaskDAO::getByAircraftTaskId(int aircraftTaskId) const
     query.bindValue(":aircraft_task_id", aircraftTaskId);
 
     if (!query.exec()) {
-        qWarning() << "查询飞机下设备任务失败:" << query.lastError().text();
+        Logger::error("DATABASE_QUERY_FAILED",
+                      "查询飞机下设备任务失败",
+                      {{"aircraft_task_id", aircraftTaskId}, {"error", query.lastError().text()}});
         return {};
     }
     return readDeviceTasks(query);
@@ -124,7 +129,9 @@ QList<DeviceTask> DeviceTaskDAO::getByStatus(DeviceTaskStatus status) const
     query.bindValue(":status", TaskStatusText::toInt(status));
 
     if (!query.exec()) {
-        qWarning() << "按状态查询设备任务失败:" << query.lastError().text();
+        Logger::error("DATABASE_QUERY_FAILED",
+                      "按状态查询设备任务失败",
+                      {{"status", TaskStatusText::toInt(status)}, {"error", query.lastError().text()}});
         return {};
     }
     return readDeviceTasks(query);

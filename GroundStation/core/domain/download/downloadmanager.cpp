@@ -2,6 +2,7 @@
 
 #include "../../network/serverconnector.h"
 #include "../../repository/taskrepository.h"
+#include "../../logging/logger.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -54,7 +55,7 @@ DownloadManager::~DownloadManager()
 bool DownloadManager::init(ServerConnector* serverConnector, TaskRepository* repository)
 {
     if (!serverConnector || !repository) {
-        qCritical() << "DownloadManager::init - invalid dependency";
+        Logger::error("DOWNLOAD_MANAGER_INIT_FAILED", "DownloadManager 初始化失败，依赖为空");
         return false;
     }
 
@@ -77,28 +78,33 @@ bool DownloadManager::init(ServerConnector* serverConnector, TaskRepository* rep
     m_autoSaveTimer->start(AUTO_SAVE_INTERVAL_MS);
 
     m_initialized = true;
-    qDebug() << "DownloadManager initialized";
+    Logger::info("DOWNLOAD_MANAGER_READY", "下载管理器初始化完成");
     return true;
 }
 
 bool DownloadManager::startDownload(const DeviceTask& deviceTask, const DownloadTask& downloadTask)
 {
     if (!m_initialized) {
-        qWarning() << "DownloadManager not initialized";
+        Logger::warn("DOWNLOAD_START_FAILED", "下载管理器尚未初始化");
         return false;
     }
 
     if (!deviceTask.isValid() || !downloadTask.isValid()) {
-        qWarning() << "下载任务无效";
+        Logger::warn("DOWNLOAD_START_FAILED", "下载任务无效");
         return false;
     }
 
     if (m_downloads.contains(downloadTask.task_uuid)) {
-        qWarning() << "下载任务已经在执行:" << downloadTask.task_uuid;
+        Logger::warn("DOWNLOAD_START_REJECTED",
+                     "下载任务已经在执行",
+                     {{"download_session_id", downloadTask.task_uuid}, {"device_task_id", deviceTask.device_task_id}});
         return false;
     }
 
     if (isLocalFileValid(downloadTask, deviceTask.total_size)) {
+        Logger::info("DOWNLOAD_SKIPPED",
+                     "本地文件已存在且校验通过，跳过下载",
+                     {{"download_session_id", downloadTask.task_uuid}, {"device_task_id", deviceTask.device_task_id}, {"local_path", downloadTask.local_path}});
         emit downloadFinished(downloadTask.task_uuid, downloadTask.local_path, true);
         return true;
     }
@@ -110,7 +116,9 @@ bool DownloadManager::startDownload(const DeviceTask& deviceTask, const Download
     context->tempFile = new QFile(context->localTempPath);
     if (context->downloadedSize > 0) {
         if (!context->tempFile->open(QIODevice::ReadWrite)) {
-            qCritical() << "无法打开断点续传临时文件:" << context->localTempPath;
+            Logger::error("DOWNLOAD_START_FAILED",
+                          "无法打开断点续传临时文件",
+                          {{"download_session_id", context->taskUuid}, {"temp_path", context->localTempPath}});
             delete context;
             return false;
         }
@@ -123,7 +131,9 @@ bool DownloadManager::startDownload(const DeviceTask& deviceTask, const Download
             context->tempFile->seek(context->downloadedSize);
         }
     } else if (!context->tempFile->open(QIODevice::WriteOnly)) {
-        qCritical() << "无法创建临时文件:" << context->localTempPath;
+        Logger::error("DOWNLOAD_START_FAILED",
+                      "无法创建临时文件",
+                      {{"download_session_id", context->taskUuid}, {"temp_path", context->localTempPath}});
         delete context;
         return false;
     }
@@ -135,9 +145,9 @@ bool DownloadManager::startDownload(const DeviceTask& deviceTask, const Download
         return false;
     }
 
-    qDebug() << "开始下载设备任务:" << deviceTask.device_task_id
-             << "文件:" << context->fileCode
-             << "断点:" << context->downloadedSize;
+    Logger::info("DOWNLOAD_START",
+                 QString("开始下载设备任务 %1 的文件").arg(deviceTask.device_task_id),
+                 {{"download_session_id", context->taskUuid}, {"device_task_id", deviceTask.device_task_id}, {"file_code", context->fileCode}, {"offset", context->downloadedSize}});
     return true;
 }
 
@@ -150,6 +160,7 @@ bool DownloadManager::pauseDownload(const QString& taskUuid)
 
     context->isPaused = true;
     saveProgressToDatabase(*context, DownloadSessionStatus::Paused);
+    Logger::info("DOWNLOAD_PAUSED", "下载已暂停", {{"download_session_id", taskUuid}});
     emit downloadPaused(taskUuid);
     return true;
 }
@@ -166,6 +177,7 @@ bool DownloadManager::resumeDownload(const QString& taskUuid)
         return false;
     }
 
+    Logger::info("DOWNLOAD_RESUMED", "下载已恢复", {{"download_session_id", taskUuid}, {"offset", context->downloadedSize}});
     emit downloadResumed(taskUuid);
     return true;
 }
@@ -178,6 +190,7 @@ bool DownloadManager::cancelDownload(const QString& taskUuid)
     }
 
     context->isCancelled = true;
+    Logger::warn("DOWNLOAD_CANCELLED", "下载已取消", {{"download_session_id", taskUuid}});
     cleanupContext(taskUuid, true);
     return true;
 }
@@ -223,6 +236,7 @@ void DownloadManager::onFileChunkReceived(QString taskUuid, const QByteArray& ch
 
     const qint64 bytesWritten = context->tempFile->write(chunkData);
     if (bytesWritten != chunkData.size()) {
+        Logger::error("DOWNLOAD_FAILED", "写入临时文件失败", {{"download_session_id", taskUuid}});
         emit downloadFailed(taskUuid, 1001, "写入临时文件失败");
         cleanupContext(taskUuid);
         return;
@@ -262,6 +276,9 @@ void DownloadManager::onFileInfoReceived(QString taskUuid, qint64 totalSize, con
     }
 
     if (context->totalSize > 0 && totalSize != context->totalSize) {
+        Logger::error("DOWNLOAD_FAILED",
+                      "文件大小不匹配",
+                      {{"download_session_id", taskUuid}, {"expected_size", context->totalSize}, {"actual_size", totalSize}});
         emit downloadFailed(taskUuid, 1003, "文件大小不匹配");
         cleanupContext(taskUuid);
         return;
@@ -269,6 +286,9 @@ void DownloadManager::onFileInfoReceived(QString taskUuid, qint64 totalSize, con
 
     if (!context->expectedSha256.isEmpty() &&
         sha256.compare(context->expectedSha256, Qt::CaseInsensitive) != 0) {
+        Logger::error("DOWNLOAD_FAILED",
+                      "服务器返回的 SHA-256 不匹配",
+                      {{"download_session_id", taskUuid}, {"expected_sha256", context->expectedSha256}, {"actual_sha256", sha256}});
         emit downloadFailed(taskUuid, 1004, "服务器返回的 SHA-256 不匹配");
         cleanupContext(taskUuid);
         return;
@@ -284,6 +304,9 @@ void DownloadManager::onServerError(QString taskUuid, int errorCode, const QStri
         return;
     }
 
+    Logger::error("DOWNLOAD_FAILED",
+                  "服务器下载错误",
+                  {{"download_session_id", taskUuid}, {"error_code", errorCode}, {"error_message", errorMessage}});
     emit downloadFailed(taskUuid, errorCode, errorMessage);
     cleanupContext(taskUuid);
 }
@@ -300,7 +323,7 @@ void DownloadManager::onAutoSaveProgress()
 bool DownloadManager::fileDownloadRequest(const QString& taskUuid, qint64 offset)
 {
     if (!m_serverConnector) {
-        qCritical() << "ServerConnector is null";
+        Logger::error("DOWNLOAD_REQUEST_FAILED", "ServerConnector 为空");
         return false;
     }
 
@@ -353,9 +376,9 @@ bool DownloadManager::finalizeDownload(DownloadContext& context)
     if (!context.expectedSha256.isEmpty()) {
         const QString actualSha256 = calculateFileSha256(context.localTempPath);
         if (actualSha256.compare(context.expectedSha256, Qt::CaseInsensitive) != 0) {
-            qCritical() << "SHA-256 校验失败:" << context.taskUuid
-                        << "期望:" << context.expectedSha256
-                        << "实际:" << actualSha256;
+            Logger::error("DOWNLOAD_VERIFY_FAILED",
+                          "SHA-256 校验失败",
+                          {{"download_session_id", context.taskUuid}, {"expected_sha256", context.expectedSha256}, {"actual_sha256", actualSha256}});
             return false;
         }
     }
@@ -367,7 +390,9 @@ bool DownloadManager::finalizeDownload(DownloadContext& context)
         }
 
         if (!tempFile.rename(context.localPath)) {
-            qCritical() << "临时文件重命名失败:" << context.localPath;
+            Logger::error("DOWNLOAD_FINALIZE_FAILED",
+                          "临时文件重命名失败",
+                          {{"download_session_id", context.taskUuid}, {"local_path", context.localPath}, {"temp_path", context.localTempPath}});
             return false;
         }
     }
@@ -375,6 +400,9 @@ bool DownloadManager::finalizeDownload(DownloadContext& context)
     context.downloadedSize = context.totalSize;
     saveProgressToDatabase(context, DownloadSessionStatus::Finished);
     m_repository->updateDeviceLocalPackagePath(context.deviceTaskId, context.localPath);
+    Logger::info("DOWNLOAD_FINISHED",
+                 "文件下载完成",
+                 {{"download_session_id", context.taskUuid}, {"device_task_id", context.deviceTaskId}, {"local_path", context.localPath}});
     return true;
 }
 

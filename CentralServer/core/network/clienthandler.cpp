@@ -76,6 +76,7 @@ void ClientHandler::handleLoginRequest(const Message& reqMsg)
         m_lastActiveTime = QDateTime::currentMSecsSinceEpoch();
         Message respMsg = Message::createResponse(reqMsg, loginResult.toResponseJson());
         sendMessage(m_socket, respMsg);
+        emit loginSucceeded(loginResult.user.username, loginResult.user.role, loginResult.token);
         DEBUG_LOCATION << loginResult.toResponseJson();
         return;
     }

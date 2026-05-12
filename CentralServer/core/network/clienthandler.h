@@ -21,6 +21,7 @@ public:
 signals:
     void finished();
     void logMessage(const QString& msg);
+    void loginSucceeded(QString username, QString role, QString token);
 
 private slots:
     void onReadyRead();
@@ -33,7 +34,7 @@ private:
     UserDAO* m_userDao = nullptr;
     UserService* m_userService = nullptr;
 
-    quint64 m_lastActiveTime = 0; // 保存毫秒级时间戳。
+    quint64 m_lastActiveTime = 0; // 保存毫秒级时间戳
 
     void handleLoginRequest(const Message& reqMsg);
 };

@@ -1,5 +1,6 @@
-﻿#include "taskstatemachine.h"
+#include "taskstatemachine.h"
 
+#include "../../logging/logger.h"
 #include "../../models/devicetask.h"
 #include "../../repository/taskrepository.h"
 
@@ -11,7 +12,7 @@ TaskStateMachine::TaskStateMachine(QObject *parent)
 bool TaskStateMachine::init(TaskRepository* repository)
 {
     if (!repository) {
-        qCritical() << "TaskStateMachine::init - invalid TaskRepository";
+        Logger::error("TASK_STATE_MACHINE_INIT_FAILED", "TaskStateMachine 初始化失败，TaskRepository 为空");
         return false;
     }
 

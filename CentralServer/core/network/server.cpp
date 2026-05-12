@@ -67,6 +67,8 @@ void Server::onNewConnection()
 
         // 连接处理器的信号
         connect(handler, &ClientHandler::logMessage, this, &Server::onClientLog);
+        connect(handler, &ClientHandler::loginSucceeded,
+                this, &Server::onClientLoginSucceeded);
         connect(handler, &ClientHandler::finished, [this, handler]() { onClientFinished(handler); });
 
         // 打印连接信息
@@ -85,15 +87,16 @@ void Server::onClientDisconnected()
     QTcpSocket *socket = qobject_cast<QTcpSocket*>(sender());
     if (!socket) return;
 
-    //删除信息
     if (m_clients.contains(socket)) {
-        ClientInfo info = m_clients[socket];
-        m_clients.remove(socket);
+        ClientInfo& info = m_clients[socket];
+        info.isDisconnected = true;
+        info.isLoggedIn = false;
+        info.handler = nullptr;
 
-    DEBUG_LOCATION << "客户端断开:"
-             << "地址:" << info.address
-             << "端口:" << info.port
-             << "在线时长:" << info.connectTime.secsTo(QDateTime::currentDateTime()) << "秒";
+        DEBUG_LOCATION << "客户端断开:"
+                 << "地址:" << info.address
+                 << "端口:" << info.port
+                 << "在线时长:" << info.connectTime.secsTo(QDateTime::currentDateTime()) << "秒";
     }
 
     socket->deleteLater();
@@ -134,20 +137,23 @@ void Server::onStopServer()
 {
     if (!m_isListening) return;
 
-    // 断开所有客户端连接
     for (QTcpSocket* socket : m_clients.keys()) {  // 遍历所有socket
-        ClientInfo info = m_clients[socket];
+        ClientInfo& info = m_clients[socket];
+        if (info.isDisconnected) {
+            continue;
+        }
 
         DEBUG_LOCATION << "断开客户端:" << info.address << ":" << info.port;
 
+        info.isDisconnected = true;
+        info.isLoggedIn = false;
+        info.handler = nullptr;
         socket->disconnectFromHost();
         if (socket->state() == QAbstractSocket::ConnectedState) {
             socket->waitForDisconnected(1000);
         }
         socket->deleteLater();
     }
-
-    m_clients.clear();
 
     // 关闭服务器
     m_server->close();
@@ -157,7 +163,7 @@ void Server::onStopServer()
     ui->labelStatus->setText("服务器停止运行");
     ui->btnStart->setEnabled(true);
     ui->btnStop->setEnabled(false);
-    updateClientList();  // 清空客户端列表
+    updateClientList();
 
     DEBUG_LOCATION << "服务器已停止";
 }
@@ -180,9 +186,10 @@ void Server::onClientFinished(ClientHandler* handler)
     }
 
     if (socket) {
-        // 从列表中移除
-        ClientInfo info = m_clients[socket];
-        m_clients.remove(socket);
+        ClientInfo& info = m_clients[socket];
+        info.isDisconnected = true;
+        info.isLoggedIn = false;
+        info.handler = nullptr;
 
         DEBUG_LOCATION << "ClientHandler finished for:" << info.address << ":" << info.port;
 
@@ -191,12 +198,40 @@ void Server::onClientFinished(ClientHandler* handler)
     }
 }
 
+void Server::onClientLoginSucceeded(QString username, QString role, QString token)
+{
+    ClientHandler* handler = qobject_cast<ClientHandler*>(sender());
+    if (!handler) {
+        return;
+    }
+
+    for (auto it = m_clients.begin(); it != m_clients.end(); ++it) {
+        ClientInfo& info = it.value();
+        if (info.handler == handler) {
+            info.isLoggedIn = true;
+            info.username = username;
+            info.role = role;
+            info.token = token;
+            info.loginTime = QDateTime::currentDateTime();
+            updateClientList();
+            return;
+        }
+    }
+}
+
 void Server::updateClientList()
 {
     // 清空并重新填充客户端列表
     ui->listWidgetClients->clear();
 
-    DEBUG_LOCATION << "更新客户端列表，当前连接数:" << m_clients.size();
+    int activeCount = 0;
+    for (const ClientInfo& info : std::as_const(m_clients)) {
+        if (!info.isDisconnected) {
+            ++activeCount;
+        }
+    }
+
+    DEBUG_LOCATION << "更新客户端列表，当前连接数:" << activeCount;
 
     // 遍历QMap中的所有客户端
     int index = 1;
@@ -209,30 +244,35 @@ void Server::updateClientList()
         // 构建显示信息
         QString clientInfo;
 
-        if (info.isLoggedIn) {
+        const QString loginState = info.isDisconnected
+            ? "断开"
+            : (info.isLoggedIn ? "已登录" : "未登录");
+
+        if (info.isLoggedIn && !info.isDisconnected) {
             // 已登录用户显示详细信息// clazy:excludeall=qstring-arg
             clientInfo = QString("%1.  %2:%3 [%4] %5 (%6) - 连接时间:%7")
-                             .arg(index++)
-                             .arg(info.address)
-                             .arg(info.port)
-                             .arg(info.isLoggedIn ? "已登录" : "未登录")
-                             .arg(info.username)
-                             .arg(info.role)
-                             .arg(info.connectTime.toString("hh:mm:ss"));
+                             .arg(index++, 2)
+                             .arg(info.address, 15)
+                             .arg(info.port, 5)
+                             .arg(loginState, 6)
+                             .arg(info.username, 10)
+                             .arg(info.role, 8)
+                             .arg(info.connectTime.toString("hh:mm:ss"), 8);
         } else {
             // 未登录用户显示基本信息
-            clientInfo = QString("%1. %2:%3 [未登录] - 连接时间:%4")
-                             .arg(index++)
-                             .arg(info.address)
-                             .arg(info.port)
-                             .arg(info.connectTime.toString("hh:mm:ss"));
+            clientInfo = QString("%1. %2:%3 [%4] - 连接时间:%5")
+                             .arg(index++, 2)
+                             .arg(info.address, 15)
+                             .arg(info.port, 5)
+                             .arg(loginState, 6)
+                             .arg(info.connectTime.toString("hh:mm:ss"), 8);
         }
 
         ui->listWidgetClients->addItem(clientInfo);
     }
 
     // 更新状态栏显示连接数
-    ui->labelConnectionCount->setText(QString("当前连接数: %1").arg(m_clients.size()));
+    ui->labelConnectionCount->setText(QString("当前连接数: %1").arg(activeCount));
 }
 
 void Server::addClientToList(QTcpSocket *socket)

@@ -1,6 +1,7 @@
 #include "transfersessiondao.h"
 
 #include "../localdatabase/localdatabase.h"
+#include "../logging/logger.h"
 
 #include <QDateTime>
 #include <QSqlError>
@@ -28,7 +29,7 @@ QList<TransferSession> readTransferSessions(QSqlQuery& query)
 bool TransferSessionDAO::upsert(const TransferSession& session) const
 {
     if (!session.isValid()) {
-        qWarning() << "无效传输会话，无法保存";
+        Logger::warn("DATABASE_SAVE_REJECTED", "无效传输会话，无法保存");
         return false;
     }
 
@@ -62,7 +63,9 @@ bool TransferSessionDAO::upsert(const TransferSession& session) const
     query.bindValue(":error_message", session.error_message);
 
     if (!query.exec()) {
-        qWarning() << "保存传输会话失败:" << query.lastError().text();
+        Logger::error("DATABASE_SAVE_FAILED",
+                      "保存传输会话失败",
+                      {{"transfer_session_id", session.transfer_session_id}, {"error", query.lastError().text()}});
         return false;
     }
     return true;
@@ -112,7 +115,9 @@ QList<TransferSession> TransferSessionDAO::getByStatus(TransferSessionStatus sta
     query.bindValue(":status", TaskStatusText::toInt(status));
 
     if (!query.exec()) {
-        qWarning() << "按状态查询传输会话失败:" << query.lastError().text();
+        Logger::error("DATABASE_QUERY_FAILED",
+                      "按状态查询传输会话失败",
+                      {{"status", TaskStatusText::toInt(status)}, {"error", query.lastError().text()}});
         return {};
     }
     return readTransferSessions(query);

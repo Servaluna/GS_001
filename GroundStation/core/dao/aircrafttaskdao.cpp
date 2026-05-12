@@ -1,6 +1,7 @@
 ﻿#include "aircrafttaskdao.h"
 
 #include "../localdatabase/localdatabase.h"
+#include "../logging/logger.h"
 
 #include <QDateTime>
 #include <QSqlError>
@@ -56,7 +57,7 @@ QString aggregateSelectSql()
 bool AircraftTaskDAO::upsert(const AircraftTask& task) const
 {
     if (!task.isValid()) {
-        qWarning() << "无效飞机任务，无法保存";
+        Logger::warn("DATABASE_SAVE_REJECTED", "无效飞机任务，无法保存");
         return false;
     }
 
@@ -76,7 +77,9 @@ bool AircraftTaskDAO::upsert(const AircraftTask& task) const
     query.bindValue(":last_update_time", QDateTime::currentDateTime().toString(Qt::ISODate));
 
     if (!query.exec()) {
-        qWarning() << "更新飞机任务聚合信息失败:" << query.lastError().text();
+        Logger::error("DATABASE_SAVE_FAILED",
+                      "更新飞机任务聚合信息失败",
+                      {{"aircraft_task_id", task.aircraft_task_id}, {"error", query.lastError().text()}});
         return false;
     }
     return true;
@@ -113,7 +116,9 @@ QList<AircraftTask> AircraftTaskDAO::getByAssignedOperator(int operatorUserId) c
     query.bindValue(":assigned_operator_user_id", operatorUserId);
 
     if (!query.exec()) {
-        qWarning() << "查询操作员飞机任务失败:" << query.lastError().text();
+        Logger::error("DATABASE_QUERY_FAILED",
+                      "查询操作员飞机任务失败",
+                      {{"operator_user_id", operatorUserId}, {"error", query.lastError().text()}});
         return {};
     }
     return readAircraftTasks(query);
@@ -123,7 +128,9 @@ QList<AircraftTask> AircraftTaskDAO::getAll() const
 {
     QSqlQuery query(LocalDatabase::getInstance()->getDatabase());
     if (!query.exec(aggregateSelectSql() + " GROUP BY aircraft_task_id ORDER BY aircraft_task_id ASC")) {
-        qWarning() << "查询飞机任务失败:" << query.lastError().text();
+        Logger::error("DATABASE_QUERY_FAILED",
+                      "查询飞机任务失败",
+                      {{"error", query.lastError().text()}});
         return {};
     }
     return readAircraftTasks(query);

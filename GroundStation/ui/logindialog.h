@@ -4,10 +4,9 @@
 #include "models.h"
 
 #include <QDialog>
-#include <QMessageBox>
-#include <QDebug>
-#include <QTimer>
 #include <QLineEdit>
+#include <QMessageBox>
+#include <QTimer>
 
 namespace Ui {
 class LoginDialog;
@@ -23,19 +22,15 @@ public:
 
     UserInfo getUserInfo() const { return m_userInfo; }
 
-signals:
-    // void loginSuccess(const UserInfo& userInfo);
-
 private slots:
-    // 添加槽函数声明
     void on_btnLogin_clicked();
     void on_btnCancel_clicked();
 
 private:
+    void init();
+
     Ui::LoginDialog *ui;
     UserInfo m_userInfo;
-
-    void init();
 };
 
 #endif // LOGINDIALOG_H
