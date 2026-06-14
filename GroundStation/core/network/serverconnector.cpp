@@ -187,6 +187,26 @@ void ServerConnector::loginRequest(const QString& username, const QString& passw
     }
 }
 
+bool ServerConnector::logoutRequest()
+{
+    if (!isConnected()) {
+        Logger::warn("AUTH_LOGOUT_REQUEST_FAILED", "未连接服务器，无法发送退出登录请求");
+        return false;
+    }
+
+    Message reqMsg;
+    reqMsg.type = MessageType::Logout;
+
+    const bool ok = sendMessage(m_socket, reqMsg);
+    if (ok) {
+        m_socket->waitForBytesWritten(1000);
+        Logger::info("AUTH_LOGOUT_REQUEST", "发送退出登录请求");
+    } else {
+        Logger::error("AUTH_LOGOUT_REQUEST_FAILED", "退出登录请求发送失败");
+    }
+    return ok;
+}
+
 bool ServerConnector::fileDownloadRequest(const QString& fileCode, qint64 offset, const QString& taskUuid)
 {
     if (!isConnected()) {

@@ -1,5 +1,7 @@
 #include "server.h"
 
+#include "../logging/serverlogger.h"
+
 #define DEFAULT_PORT 8000
 
 Server::Server(QObject *parent)
@@ -23,6 +25,9 @@ bool Server::start(quint16 port)
     const quint16 listenPort = port == 0 ? DEFAULT_PORT : port;
     if (!m_server->listen(QHostAddress::Any, listenPort)) {
         m_lastError = m_server->errorString();
+        ServerLogger::error("SERVER_START_FAILED",
+                            "服务器启动失败",
+                            {{"port", listenPort}, {"error", m_lastError}});
         emit startFailed(m_lastError);
         emit logMessage(QString("服务器启动失败: %1").arg(m_lastError));
         return false;
@@ -31,6 +36,7 @@ bool Server::start(quint16 port)
     m_isListening = true;
     m_listenPort = listenPort;
     emit started(listenPort);
+    ServerLogger::info("SERVER_STARTED", "服务器启动成功", {{"port", listenPort}});
     emit logMessage(QString("服务器启动成功，监听端口: %1").arg(listenPort));
     return true;
 }
@@ -48,6 +54,14 @@ void Server::stop()
         }
 
         emit logMessage(QString("断开客户端 %1:%2").arg(info.address).arg(info.port));
+        ServerLogContext context;
+        context.ip_address = info.address;
+        context.session_id = info.token;
+        ServerLogger::warn("CLIENT_FORCE_DISCONNECT",
+                           "服务器停止时断开客户端",
+                           context,
+                           {{"port", info.port}, {"username", info.username}, {"role", info.role}});
+
         info.isDisconnected = true;
         info.isLoggedIn = false;
         info.handler = nullptr;
@@ -65,6 +79,7 @@ void Server::stop()
 
     emit clientListChanged();
     emit stopped();
+    ServerLogger::info("SERVER_STOPPED", "服务器已停止");
     emit logMessage("服务器已停止");
 }
 
@@ -111,9 +126,18 @@ void Server::onNewConnection()
         info.handler = handler;
         m_clients[socket] = info;
 
+        ServerLogContext context;
+        context.ip_address = info.address;
+        ServerLogger::info("CLIENT_CONNECTED",
+                           "新客户端连接",
+                           context,
+                           {{"port", info.port}});
+
         connect(handler, &ClientHandler::logMessage, this, &Server::onClientLog);
         connect(handler, &ClientHandler::loginSucceeded,
                 this, &Server::onClientLoginSucceeded);
+        connect(handler, &ClientHandler::loggedOut,
+                this, &Server::onClientLoggedOut);
         connect(handler, &ClientHandler::finished,
                 this, [this, handler]() { onClientFinished(handler); });
 
@@ -167,7 +191,48 @@ void Server::onClientLoginSucceeded(QString username, QString role, QString toke
             info.role = role;
             info.token = token;
             info.loginTime = QDateTime::currentDateTime();
+
+            ServerLogContext context;
+            context.ip_address = info.address;
+            context.session_id = token;
+            ServerLogger::info("CLIENT_LOGIN_STATE_UPDATED",
+                               "客户端登录状态已更新",
+                               context,
+                               {{"username", username}, {"role", role}, {"port", info.port}});
             emit logMessage(QString("客户端登录成功: %1 (%2)").arg(username, role));
+            emit clientListChanged();
+            return;
+        }
+    }
+}
+
+void Server::onClientLoggedOut(ClientHandler* handler)
+{
+    if (!handler) {
+        return;
+    }
+
+    for (auto it = m_clients.begin(); it != m_clients.end(); ++it) {
+        ClientInfo& info = it.value();
+        if (info.handler == handler) {
+            const QString username = info.username;
+            const QString role = info.role;
+
+            ServerLogContext context;
+            context.ip_address = info.address;
+            context.session_id = info.token;
+            ServerLogger::info("CLIENT_LOGOUT_STATE_UPDATED",
+                               "客户端退出账户，连接状态切换为未登录",
+                               context,
+                               {{"username", username}, {"role", role}, {"port", info.port}});
+
+            info.isLoggedIn = false;
+            info.username.clear();
+            info.role.clear();
+            info.token.clear();
+            info.loginTime = QDateTime();
+
+            emit logMessage(QString("客户端退出账户: %1:%2").arg(info.address).arg(info.port));
             emit clientListChanged();
             return;
         }
@@ -190,6 +255,13 @@ void Server::markSocketDisconnected(QTcpSocket* socket)
     info.handler = nullptr;
 
     const qint64 onlineSeconds = info.connectTime.secsTo(QDateTime::currentDateTime());
+    ServerLogContext context;
+    context.ip_address = info.address;
+    context.session_id = info.token;
+    ServerLogger::warn("CLIENT_DISCONNECTED",
+                       "客户端断开连接",
+                       context,
+                       {{"port", info.port}, {"online_seconds", onlineSeconds}, {"username", info.username}, {"role", info.role}});
     emit logMessage(QString("客户端断开: %1:%2，在线时长: %3 秒")
                         .arg(info.address)
                         .arg(info.port)

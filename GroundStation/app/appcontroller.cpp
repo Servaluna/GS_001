@@ -136,6 +136,7 @@ void AppController::onLoginSuccess(QString token, const UserInfo& userInfo)
 void AppController::onLogoutRequested()
 {
     Logger::info("AUTH_LOGOUT", "用户退出登录");
+    ServerConnector::instance().logoutRequest();
     Logger::instance().setOperatorUserId(-1);
     Logger::instance().setSessionId(QString());
     closeDeviceConnectorPage();

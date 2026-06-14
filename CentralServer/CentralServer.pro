@@ -16,6 +16,7 @@ SOURCES += \
     core/network/clienthandler.cpp \
     main.cpp \
     core/database/databasemanager.cpp \
+    core/logging/serverlogger.cpp \
     core/network/server.cpp \
     ui/serverwindow.cpp
 
@@ -26,6 +27,7 @@ HEADERS += \
     ../Common/taskstatus.h \
     core/dao/userdao.h \
     core/database/databasemanager.h \
+    core/logging/serverlogger.h \
     core/services/userservice.h \
     core/network/clienthandler.h \
     core/network/server.h \

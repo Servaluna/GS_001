@@ -66,6 +66,7 @@ private slots:
     void onClientLog(const QString& msg);
     void onClientFinished(ClientHandler* handler);
     void onClientLoginSucceeded(QString username, QString role, QString token);
+    void onClientLoggedOut(ClientHandler* handler);
 
 private:
     void markSocketDisconnected(QTcpSocket* socket);

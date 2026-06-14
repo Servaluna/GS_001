@@ -22,6 +22,7 @@ signals:
     void finished();
     void logMessage(const QString& msg);
     void loginSucceeded(QString username, QString role, QString token);
+    void loggedOut(ClientHandler* handler);
 
 private slots:
     void onReadyRead();
@@ -29,6 +30,7 @@ private slots:
 
 private:
     void handleLoginRequest(const Message& reqMsg);
+    void handleLogoutRequest(const Message& reqMsg);
 
     QTcpSocket* m_socket = nullptr;
     QByteArray m_buffer;

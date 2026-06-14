@@ -1,10 +1,10 @@
 #include "userservice.h"
 
 #include "../dao/userdao.h"
+#include "../logging/serverlogger.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
-#include <QDebug>
 
 QJsonObject LoginResult::toResponseJson() const
 {
@@ -30,33 +30,42 @@ LoginResult UserService::login(const QString& username, const QString& password)
 
     if (username.isEmpty() || password.isEmpty()) {
         result.errorMessage = "用户名或密码为空";
-        qWarning() << "认证失败:" << result.errorMessage;
+        ServerLogger::warn("AUTH_LOGIN_REJECTED", result.errorMessage, {{"username", username}});
         return result;
     }
 
     if (!m_userDao) {
         result.errorMessage = "用户数据访问对象未初始化";
-        qCritical() << result.errorMessage;
+        ServerLogger::error("AUTH_LOGIN_FAILED", result.errorMessage, {{"username", username}});
         return result;
     }
 
     UserInfo userInfo = m_userDao->getUserByUsername(username);
     if (!userInfo.isValid()) {
         result.errorMessage = "用户名或密码错误";
-        qDebug() << "用户不存在:" << username;
+        ServerLogger::warn("AUTH_LOGIN_REJECTED", "用户不存在", {{"username", username}});
         return result;
     }
 
+    ServerLogContext context;
+    context.operator_user_id = userInfo.user_id;
+
     if (!userInfo.isActive()) {
         result.errorMessage = "账户已禁用";
-        qWarning() << "账户已禁用:" << username;
+        ServerLogger::warn("AUTH_LOGIN_REJECTED",
+                           "账户已禁用",
+                           context,
+                           {{"username", username}, {"role", userInfo.role}});
         return result;
     }
 
     const QString inputHash = hashPassword(password);
     if (userInfo.password_hash.compare(inputHash, Qt::CaseInsensitive) != 0) {
         result.errorMessage = "用户名或密码错误";
-        qWarning() << "密码错误:" << username;
+        ServerLogger::warn("AUTH_LOGIN_REJECTED",
+                           "密码错误",
+                           context,
+                           {{"username", username}});
         return result;
     }
 
@@ -66,7 +75,11 @@ LoginResult UserService::login(const QString& username, const QString& password)
     result.user = userInfo;
     result.token = createToken(userInfo);
 
-    qDebug() << "用户认证成功:" << username << "角色:" << userInfo.role;
+    context.session_id = result.token;
+    ServerLogger::info("AUTH_LOGIN_SUCCESS",
+                       QString("用户认证成功: %1").arg(username),
+                       context,
+                       {{"username", username}, {"role", userInfo.role}, {"role_id", userInfo.role_id}});
     return result;
 }
 
@@ -82,9 +95,9 @@ QString UserService::hashPassword(const QString& password) const
 QString UserService::createToken(const UserInfo& userInfo) const
 {
     const QString rawToken = QString("%1_%2_%3")
-                                 .arg(userInfo.user_id)
-                                 .arg(userInfo.username)
-                                 .arg(QDateTime::currentMSecsSinceEpoch());
+        .arg(userInfo.user_id)
+        .arg(userInfo.username)
+        .arg(QDateTime::currentMSecsSinceEpoch());
 
     const QByteArray tokenHash = QCryptographicHash::hash(
         rawToken.toUtf8(),

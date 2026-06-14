@@ -25,6 +25,7 @@ public:
 private slots:
     void on_btnStart_clicked();
     void on_btnStop_clicked();
+    void on_btnAlwaysOnTop_toggled(bool checked);
     void onServerStarted(quint16 port);
     void onServerStopped();
     void onServerStartFailed(const QString& error);

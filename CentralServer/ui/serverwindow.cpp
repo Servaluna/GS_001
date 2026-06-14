@@ -1,9 +1,8 @@
 #include "serverwindow.h"
 #include "ui_serverwindow.h"
 
+#include "../core/logging/serverlogger.h"
 #include "../core/network/server.h"
-
-#include <QDebug>
 
 constexpr quint16 DEFAULT_PORT = 8000;
 
@@ -18,17 +17,22 @@ ServerWindow::ServerWindow(QWidget *parent)
     ui->lineEditPort->setText(QString::number(DEFAULT_PORT));
     ui->labelStatus->setText("服务器停止运行");
     ui->labelConnectionCount->setText("当前连接数: 0");
+    ui->btnAlwaysOnTop->setCheckable(true);
+    ui->btnAlwaysOnTop->setChecked(false);
+    ui->btnAlwaysOnTop->setText("置顶");
+    ui->btnAlwaysOnTop->setToolTip("让服务端窗口保持在屏幕最前面");
     setListeningUi(false);
 
     connect(ui->btnStart, &QPushButton::clicked, this, &ServerWindow::on_btnStart_clicked);
     connect(ui->btnStop, &QPushButton::clicked, this, &ServerWindow::on_btnStop_clicked);
+    connect(ui->btnAlwaysOnTop, &QPushButton::toggled, this, &ServerWindow::on_btnAlwaysOnTop_toggled);
 
     connect(m_server, &Server::started, this, &ServerWindow::onServerStarted);
     connect(m_server, &Server::stopped, this, &ServerWindow::onServerStopped);
     connect(m_server, &Server::startFailed, this, &ServerWindow::onServerStartFailed);
     connect(m_server, &Server::clientListChanged, this, &ServerWindow::updateClientList);
     connect(m_server, &Server::logMessage, this, [](const QString& msg) {
-        qDebug() << "[Server]" << msg;
+        ServerLogger::debug("SERVER_UI_LOG", msg);
     });
 }
 
@@ -51,6 +55,19 @@ void ServerWindow::on_btnStart_clicked()
 void ServerWindow::on_btnStop_clicked()
 {
     m_server->stop();
+}
+
+void ServerWindow::on_btnAlwaysOnTop_toggled(bool checked)
+{
+    const Qt::WindowFlags flags = checked
+        ? (windowFlags() | Qt::WindowStaysOnTopHint)
+        : (windowFlags() & ~Qt::WindowStaysOnTopHint);
+
+    setWindowFlags(flags);
+    ui->btnAlwaysOnTop->setText(checked ? "取消置顶" : "置顶");
+    show();
+    raise();
+    activateWindow();
 }
 
 void ServerWindow::onServerStarted(quint16 port)
@@ -100,26 +117,24 @@ quint16 ServerWindow::configuredPort() const
 QString ServerWindow::clientDisplayText(const ClientInfo& info, int index) const
 {
     const QString loginState = info.isDisconnected
-        ? "断开"
+        ? "已断开"
         : (info.isLoggedIn ? "已登录" : "未登录");
 
     if (info.isLoggedIn && !info.isDisconnected) {
-        return QString("%1. %2:%3 [%4] %5 (%6) - 连接时间:%7")
-            .arg(index, 2)
-            .arg(info.address, 15)
-            .arg(info.port, 5)
-            .arg(loginState, 6)
-            .arg(info.username, 10)
-            .arg(info.role, 8)
-            .arg(info.connectTime.toString("hh:mm:ss"), 8);
+        return QString("%1.IP:[%2] Port:[%3] 状态:[%4] 用户:[%5(%6)] - 连接时间:[%7]")
+            .arg(index, -2)
+            .arg(info.address, -15)
+            .arg(info.port, -5)
+            .arg(loginState, info.username, info.role)
+            .arg(info.connectTime.toString("hh:mm:ss"), -8);
     }
 
-    return QString("%1. %2:%3 [%4] - 连接时间:%5")
-        .arg(index, 2)
-        .arg(info.address, 15)
-        .arg(info.port, 5)
-        .arg(loginState, 6)
-        .arg(info.connectTime.toString("hh:mm:ss"), 8);
+    return QString("%1.IP:[%2] Port:[%3] 状态:[%4] - 连接时间:[%5]")
+        .arg(index, -2)
+        .arg(info.address, -15)
+        .arg(info.port, -5)
+        .arg(loginState, -3)
+        .arg(info.connectTime.toString("hh:mm:ss"), -8);
 }
 
 void ServerWindow::setListeningUi(bool listening)

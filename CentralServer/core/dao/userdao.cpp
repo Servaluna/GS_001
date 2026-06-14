@@ -1,8 +1,8 @@
-﻿#include "userdao.h"
+#include "userdao.h"
 
 #include "../database/databasemanager.h"
+#include "../logging/serverlogger.h"
 
-#include <QDebug>
 #include <QSqlError>
 #include <QSqlQuery>
 
@@ -45,7 +45,9 @@ UserInfo UserDAO::getUserById(int userId) const
 
     QSqlDatabase db = DatabaseManager::instance().getDatabase();
     if (!db.isOpen()) {
-        qCritical() << "数据库未连接";
+        ServerLogger::error("DATABASE_QUERY_REJECTED",
+                            "数据库未连接，无法按 ID 查询用户",
+                            {{"user_id", userId}});
         return userInfo;
     }
 
@@ -54,7 +56,9 @@ UserInfo UserDAO::getUserById(int userId) const
     query.bindValue(":user_id", userId);
 
     if (!query.exec()) {
-        qCritical() << "按 ID 查询用户失败:" << query.lastError().text();
+        ServerLogger::error("DATABASE_QUERY_FAILED",
+                            "按 ID 查询用户失败",
+                            {{"user_id", userId}, {"error", query.lastError().text()}});
         return userInfo;
     }
 
@@ -74,7 +78,9 @@ UserInfo UserDAO::getUserByUsername(const QString& username) const
 
     QSqlDatabase db = DatabaseManager::instance().getDatabase();
     if (!db.isOpen()) {
-        qCritical() << "数据库未连接";
+        ServerLogger::error("DATABASE_QUERY_REJECTED",
+                            "数据库未连接，无法按用户名查询用户",
+                            {{"username", username}});
         return userInfo;
     }
 
@@ -83,7 +89,9 @@ UserInfo UserDAO::getUserByUsername(const QString& username) const
     query.bindValue(":username", username);
 
     if (!query.exec()) {
-        qCritical() << "按用户名查询用户失败:" << query.lastError().text();
+        ServerLogger::error("DATABASE_QUERY_FAILED",
+                            "按用户名查询用户失败",
+                            {{"username", username}, {"error", query.lastError().text()}});
         return userInfo;
     }
 
@@ -102,7 +110,9 @@ bool UserDAO::updateLastLogin(int userId) const
 
     QSqlDatabase db = DatabaseManager::instance().getDatabase();
     if (!db.isOpen()) {
-        qCritical() << "数据库未连接";
+        ServerLogger::error("DATABASE_UPDATE_REJECTED",
+                            "数据库未连接，无法更新最后登录时间",
+                            {{"user_id", userId}});
         return false;
     }
 
@@ -111,7 +121,9 @@ bool UserDAO::updateLastLogin(int userId) const
     query.bindValue(":user_id", userId);
 
     if (!query.exec()) {
-        qWarning() << "更新最后登录时间失败:" << query.lastError().text();
+        ServerLogger::warn("DATABASE_UPDATE_FAILED",
+                           "更新最后登录时间失败",
+                           {{"user_id", userId}, {"error", query.lastError().text()}});
         return false;
     }
 

@@ -20,6 +20,7 @@ public:
     bool isConnected() const { return m_socket && m_socket->state() == QAbstractSocket::ConnectedState; }
 
     void loginRequest(const QString& username, const QString& password);
+    bool logoutRequest();
     // 请求下载文件，支持断点续传。
     bool fileDownloadRequest(const QString& fileCode, qint64 offset = 0, const QString& taskUuid = QString());
 
