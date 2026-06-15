@@ -39,6 +39,11 @@ void MainWindow::initUI()
     QString welcome = QString("欢迎用户: %1 (%2)").arg(m_userInfo.username, m_userInfo.role);
     statusBar()->showMessage(welcome, 5000);
 
+    ui->btnAlwaysOnTop->setCheckable(true);
+    ui->btnAlwaysOnTop->setChecked(false);
+    ui->btnAlwaysOnTop->setText("置顶");
+    ui->btnAlwaysOnTop->setToolTip("让地面站窗口保持在屏幕最前面");
+
     initButtonsByRole();
     initTableTask();
 
@@ -46,8 +51,23 @@ void MainWindow::initUI()
 
     connect(ui->tableTask, &QTableWidget::itemClicked,
             this, &MainWindow::onTaskItemClicked);
+    connect(ui->btnAlwaysOnTop, &QPushButton::toggled,
+            this, &MainWindow::on_btnAlwaysOnTop_toggled);
 
     loadExecutableTasks();
+}
+
+void MainWindow::on_btnAlwaysOnTop_toggled(bool checked)
+{
+    const Qt::WindowFlags flags = checked
+        ? (windowFlags() | Qt::WindowStaysOnTopHint)
+        : (windowFlags() & ~Qt::WindowStaysOnTopHint);
+
+    setWindowFlags(flags);
+    ui->btnAlwaysOnTop->setText(checked ? "取消置顶" : "置顶");
+    show();
+    raise();
+    activateWindow();
 }
 
 void MainWindow::initButtonsByRole()

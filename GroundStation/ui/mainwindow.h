@@ -36,6 +36,7 @@ protected:
 
 private slots:
     void onTaskItemClicked(QTableWidgetItem *item);
+    void on_btnAlwaysOnTop_toggled(bool checked);
 
     void on_btnExecute_clicked();
     void on_btnObtain_clicked();

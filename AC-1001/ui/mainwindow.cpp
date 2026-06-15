@@ -6,6 +6,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    setWindowTitle("AC-1001 飞机模拟器");
 }
 
 MainWindow::~MainWindow()
