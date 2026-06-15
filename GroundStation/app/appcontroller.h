@@ -26,6 +26,7 @@ private slots:
     void onLogoutRequested();
     void onOpenDeviceConnectorRequested();
     void onCentralServerDisconnected();
+    void syncTasksAndShowMainPage();
 
 private:
     bool connectToCentralServer();
@@ -39,6 +40,8 @@ private:
     QPointer<MainWindow> m_mainWindow;
     QPointer<DeviceConnector> m_deviceConnector;
     QPointer<TaskService> m_taskService;
+    QString m_pendingToken;
+    UserInfo m_pendingUserInfo;
 };
 
 #endif // APPCONTROLLER_H

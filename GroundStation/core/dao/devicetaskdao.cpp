@@ -77,9 +77,25 @@ bool DeviceTaskDAO::upsert(const DeviceTask& task) const
     if (!query.exec()) {
         Logger::error("DATABASE_SAVE_FAILED",
                       "保存设备任务失败",
-                      {{"device_task_id", task.device_task_id}, {"error", query.lastError().text()}});
+                      {{"device_task_id", task.device_task_id},
+                       {"aircraft_task_id", task.aircraft_task_id},
+                       {"batch_id", task.batch_id},
+                       {"owner_user_id", task.owner_user_id},
+                       {"assigned_operator_user_id", task.assigned_operator_user_id},
+                       {"aircraft_code", task.aircraft_code},
+                       {"device_code", task.device_code},
+                       {"file_code", task.file_code},
+                       {"error", query.lastError().text()}});
         return false;
     }
+    Logger::debug("LOCAL_DEVICE_TASK_SAVED",
+                  "设备任务已写入本地数据库",
+                  {{"device_task_id", task.device_task_id},
+                   {"aircraft_task_id", task.aircraft_task_id},
+                   {"batch_id", task.batch_id},
+                   {"aircraft_code", task.aircraft_code},
+                   {"device_code", task.device_code},
+                   {"file_code", task.file_code}});
     return true;
 }
 

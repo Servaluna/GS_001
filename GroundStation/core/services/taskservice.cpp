@@ -25,6 +25,8 @@ TaskService::TaskService(QObject *parent)
     , m_stateMachine(new TaskStateMachine(this))
     , m_scheduler(new TaskScheduler(this))
     , m_initialized(false)
+    , m_lastSyncUserId(-1)
+    , m_lastSyncRoleId(UserRole::Unknown)
 {}
 
 TaskService::~TaskService()
@@ -61,6 +63,12 @@ bool TaskService::init(ServerConnector* serverConnector, DeviceConnector* device
     connect(m_scheduler, &TaskScheduler::queueStatusChanged,
             this, &TaskService::queueStatusChanged);
 
+    connect(serverConnector, &ServerConnector::currentUserTasksReceived,
+            this, [this](const QJsonArray& aircraftTasks, const QJsonArray& deviceTasks) {
+                const bool saved = saveCurrentUserTasks(aircraftTasks, deviceTasks);
+                emit currentUserTasksSynced(saved, aircraftTasks.size(), deviceTasks.size());
+            });
+
     m_initialized = true;
     Logger::info("TASK_SERVICE_READY", "任务服务初始化完成");
     return true;
@@ -96,25 +104,26 @@ bool TaskService::syncTasksForUser(int userId, int roleId, int timeoutMs)
 
     bool received = false;
     bool saved = false;
+    m_lastSyncUserId = userId;
+    m_lastSyncRoleId = roleId;
+
+    Logger::info("TASK_SYNC_START",
+                 "开始同步当前登录用户任务",
+                 {{"user_id", userId}, {"role_id", roleId}, {"timeout_ms", timeoutMs}});
 
     QMetaObject::Connection tasksConnection;
-    tasksConnection = connect(&server, &ServerConnector::currentUserTasksReceived,
-                              this,
-                              [&](const QJsonArray& aircraftTasks, const QJsonArray& deviceTasks) {
-        Q_UNUSED(aircraftTasks);
+    tasksConnection = connect(this, &TaskService::currentUserTasksSynced,
+                              &loop,
+                              [&](bool success, int aircraftTaskCount, int deviceTaskCount) {
         received = true;
-        saved = true;
-
-        for (const QJsonValue& value : deviceTasks) {
-            const DeviceTask task = DeviceTask::fromJson(value.toObject());
-            if (!task.isValid() || !m_repository->saveDeviceTask(task)) {
-                saved = false;
-            }
-        }
-
-        Logger::info("TASK_SYNC_FINISHED",
-                     "任务同步完成",
-                     {{"user_id", userId}, {"role_id", roleId}, {"device_task_count", deviceTasks.size()}});
+        saved = success;
+        Logger::info("TASK_SYNC_WAIT_FINISHED",
+                     "登录等待期间收到任务同步结果",
+                     {{"user_id", userId},
+                      {"role_id", roleId},
+                      {"aircraft_task_count", aircraftTaskCount},
+                      {"device_task_count", deviceTaskCount},
+                      {"success", success}});
         loop.quit();
     });
 
@@ -142,26 +151,101 @@ bool TaskService::syncTasksForUser(int userId, int roleId, int timeoutMs)
 
     if (!received) {
         Logger::warn("TASK_SYNC_TIMEOUT",
-                     "任务同步超时",
+                     "任务同步等待超时，响应晚到时仍会继续写入本地缓存",
                      {{"user_id", userId}, {"role_id", roleId}, {"timeout_ms", timeoutMs}});
         return false;
     }
 
     m_repository->clearCache();
+    Logger::info("TASK_SYNC_RESULT",
+                 saved ? "任务同步结果：本地保存成功" : "任务同步结果：部分或全部本地保存失败",
+                 {{"user_id", userId}, {"role_id", roleId}, {"success", saved}});
+    return saved;
+}
+
+bool TaskService::saveCurrentUserTasks(const QJsonArray& aircraftTasks, const QJsonArray& deviceTasks)
+{
+    bool saved = true;
+    int parsedCount = 0;
+    int invalidCount = 0;
+    int savedCount = 0;
+    int failedCount = 0;
+
+    Logger::info("TASK_SYNC_PAYLOAD_RECEIVED",
+                 "收到任务同步数据",
+                 {{"user_id", m_lastSyncUserId},
+                  {"role_id", m_lastSyncRoleId},
+                  {"aircraft_task_count", aircraftTasks.size()},
+                  {"device_task_count", deviceTasks.size()}});
+
+    for (const QJsonValue& value : deviceTasks) {
+        const DeviceTask task = DeviceTask::fromJson(value.toObject());
+        if (!task.isValid()) {
+            ++invalidCount;
+            saved = false;
+            Logger::warn("TASK_SYNC_DEVICE_INVALID",
+                         "服务器返回的设备任务无效，已跳过",
+                         {{"raw_task", value.toObject()}});
+            continue;
+        }
+
+        ++parsedCount;
+        if (m_repository->saveDeviceTask(task)) {
+            ++savedCount;
+        } else {
+            ++failedCount;
+            saved = false;
+            Logger::error("TASK_SYNC_DEVICE_SAVE_FAILED",
+                          "设备任务写入本地数据库失败",
+                          {{"device_task_id", task.device_task_id},
+                           {"aircraft_task_id", task.aircraft_task_id},
+                           {"batch_id", task.batch_id},
+                           {"aircraft_code", task.aircraft_code},
+                           {"device_code", task.device_code},
+                           {"file_code", task.file_code},
+                           {"owner_user_id", task.owner_user_id},
+                           {"assigned_operator_user_id", task.assigned_operator_user_id}});
+        }
+    }
+
+    m_repository->clearCache();
+    Logger::info("TASK_SYNC_FINISHED",
+                 "任务同步完成",
+                 {{"user_id", m_lastSyncUserId},
+                  {"role_id", m_lastSyncRoleId},
+                  {"aircraft_task_count", aircraftTasks.size()},
+                  {"device_task_count", deviceTasks.size()},
+                  {"parsed_device_task_count", parsedCount},
+                  {"invalid_device_task_count", invalidCount},
+                  {"saved_device_task_count", savedCount},
+                  {"failed_device_task_count", failedCount}});
     return saved;
 }
 
 QList<AircraftTask> TaskService::getExecutableAircraftTasksForUser(int userId, int roleId)
 {
     if (!m_initialized) {
+        Logger::warn("TASK_LIST_QUERY_REJECTED",
+                     "任务服务未初始化，无法读取可执行任务",
+                     {{"user_id", userId}, {"role_id", roleId}});
         return {};
     }
 
+    Logger::info("TASK_LIST_QUERY_START",
+                 "开始读取当前用户可执行飞机任务",
+                 {{"user_id", userId}, {"role_id", roleId}});
+
+    QList<AircraftTask> tasks;
     if (UserRole::isOperator(roleId)) {
-        return m_repository->getAircraftTasksForCurrentOperator(userId);
+        tasks = m_repository->getAircraftTasksForCurrentOperator(userId);
+    } else {
+        tasks = m_repository->getAllAircraftTasks();
     }
 
-    return m_repository->getAllAircraftTasks();
+    Logger::info("TASK_LIST_QUERY_FINISHED",
+                 "读取当前用户可执行飞机任务完成",
+                 {{"user_id", userId}, {"role_id", roleId}, {"aircraft_task_count", tasks.size()}});
+    return tasks;
 }
 
 bool TaskService::startTask(const QString& taskId)

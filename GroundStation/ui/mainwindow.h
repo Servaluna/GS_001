@@ -6,9 +6,11 @@
 
 #include <QCloseEvent>
 #include <QColor>
+#include <QCheckBox>
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QPointer>
+#include <QPushButton>
 #include <QTableWidgetItem>
 
 QT_BEGIN_NAMESPACE
@@ -18,6 +20,7 @@ class MainWindow;
 QT_END_NAMESPACE
 
 class TaskService;
+class QSpacerItem;
 
 class MainWindow : public QMainWindow
 {
@@ -35,13 +38,11 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private slots:
-    void onTaskItemClicked(QTableWidgetItem *item);
     void on_btnAlwaysOnTop_toggled(bool checked);
 
     void on_btnExecute_clicked();
     void on_btnObtain_clicked();
     void on_btnLogs_clicked();
-    void on_btnStartAircraftTask_clicked();
 
     void on_btnConnectToDevices_clicked();
     void on_btnLogout_clicked();
@@ -54,9 +55,14 @@ private:
     void initUI();
     void initButtonsByRole();
     void loadExecutableTasks();
+    void showTaskStartControls();
+    void showTaskProgressControls();
+    void startSelectedAircraftTask();
 
     void initTableTask();
     void addTaskToTable(const AircraftTask& task, int row);
+    QCheckBox* taskCheckBoxAt(int row) const;
+    void onTaskCheckChanged(QCheckBox* source, bool checked);
     QString getStatusText(DeviceTaskStatus status);
     QColor getStatusColor(DeviceTaskStatus status);
     QString selectedAircraftTaskId() const;
@@ -66,6 +72,8 @@ private:
     QString m_token;
     UserInfo m_userInfo;
     QPointer<TaskService> m_taskService;
+    QPointer<QPushButton> m_btnStartAircraftTask;
+    QSpacerItem* m_taskStartSpacer = nullptr;
 };
 
 #endif // MAINWINDOW_H

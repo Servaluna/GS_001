@@ -93,6 +93,9 @@ QJsonArray TaskDAO::getAircraftTasksForUser(int userId, int roleId) const
         tasks.append(task);
     }
 
+    ServerLogger::info("TASK_QUERY_AIRCRAFT_FINISHED",
+                       "查询当前用户飞机任务完成",
+                       {{"user_id", userId}, {"role_id", roleId}, {"aircraft_task_count", tasks.size()}});
     return tasks;
 }
 
@@ -173,6 +176,9 @@ QJsonArray TaskDAO::getDeviceTasksForUser(int userId, int roleId) const
         tasks.append(task);
     }
 
+    ServerLogger::info("TASK_QUERY_DEVICE_FINISHED",
+                       "查询当前用户设备任务完成",
+                       {{"user_id", userId}, {"role_id", roleId}, {"device_task_count", tasks.size()}});
     return tasks;
 }
 

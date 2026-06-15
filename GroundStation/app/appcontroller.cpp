@@ -129,6 +129,17 @@ void AppController::showMainPage(const QString& token, const UserInfo& userInfo)
                     m_mainWindow->showExecutePageAndReload();
                 }
             });
+    connect(m_taskService, &TaskService::currentUserTasksSynced,
+            m_mainWindow, [this](bool success, int aircraftTaskCount, int deviceTaskCount) {
+                Logger::info("TASK_SYNC_REFRESH_MAINWINDOW",
+                             "任务同步完成，刷新执行页面任务表",
+                             {{"success", success},
+                              {"aircraft_task_count", aircraftTaskCount},
+                              {"device_task_count", deviceTaskCount}});
+                if (m_mainWindow) {
+                    m_mainWindow->showExecutePageAndReload();
+                }
+            });
 
     m_mainWindow->show();
     closeLoginPage();
@@ -152,13 +163,29 @@ void AppController::onLoginSuccess(QString token, const UserInfo& userInfo)
                  QString("用户 %1 登录成功").arg(userInfo.username),
                  loginContext,
                  {{"username", userInfo.username}, {"role", userInfo.role}, {"role_id", userInfo.role_id}});
-    if (!m_taskService->syncTasksForUser(userInfo.user_id, userInfo.role_id)) {
+    m_pendingToken = token;
+    m_pendingUserInfo = userInfo;
+    QTimer::singleShot(0, this, &AppController::syncTasksAndShowMainPage);
+}
+
+void AppController::syncTasksAndShowMainPage()
+{
+    if (!m_taskService || !m_pendingUserInfo.isValid()) {
+        return;
+    }
+
+    LogContext loginContext;
+    loginContext.operator_user_id = m_pendingUserInfo.user_id;
+    loginContext.session_id = m_pendingToken;
+    if (!m_taskService->syncTasksForUser(m_pendingUserInfo.user_id, m_pendingUserInfo.role_id)) {
         Logger::warn("TASK_SYNC_FAILED_AFTER_LOGIN",
                      "登录后同步任务失败，将使用本地缓存",
                      loginContext,
-                     {{"username", userInfo.username}, {"role_id", userInfo.role_id}});
+                     {{"username", m_pendingUserInfo.username}, {"role_id", m_pendingUserInfo.role_id}});
     }
-    showMainPage(token, userInfo);
+    showMainPage(m_pendingToken, m_pendingUserInfo);
+    m_pendingToken.clear();
+    m_pendingUserInfo = UserInfo();
 }
 
 void AppController::onLogoutRequested()

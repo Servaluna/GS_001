@@ -136,6 +136,10 @@ void ServerConnector::onReadyRead()
             break;
 
         case MessageType::CurrentUserTasksList:
+            Logger::info("TASK_SYNC_RESPONSE_RECEIVED",
+                         "收到服务器任务同步响应",
+                         {{"aircraft_task_count", msg.data["aircraft_tasks"].toArray().size()},
+                          {"device_task_count", msg.data["device_tasks"].toArray().size()}});
             emit currentUserTasksReceived(msg.data["aircraft_tasks"].toArray(),
                                           msg.data["device_tasks"].toArray());
             break;

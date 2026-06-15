@@ -121,7 +121,12 @@ QList<AircraftTask> AircraftTaskDAO::getByCurrentOperator(int operatorUserId) co
                       {{"operator_user_id", operatorUserId}, {"error", query.lastError().text()}});
         return {};
     }
-    return readAircraftTasks(query);
+
+    const QList<AircraftTask> tasks = readAircraftTasks(query);
+    Logger::info("LOCAL_AIRCRAFT_TASK_QUERY_FINISHED",
+                 "本地操作员飞机任务聚合查询完成",
+                 {{"operator_user_id", operatorUserId}, {"aircraft_task_count", tasks.size()}});
+    return tasks;
 }
 
 QList<AircraftTask> AircraftTaskDAO::getAll() const
@@ -133,7 +138,12 @@ QList<AircraftTask> AircraftTaskDAO::getAll() const
                       {{"error", query.lastError().text()}});
         return {};
     }
-    return readAircraftTasks(query);
+
+    const QList<AircraftTask> tasks = readAircraftTasks(query);
+    Logger::info("LOCAL_AIRCRAFT_TASK_QUERY_FINISHED",
+                 "本地全部飞机任务聚合查询完成",
+                 {{"aircraft_task_count", tasks.size()}});
+    return tasks;
 }
 
 bool AircraftTaskDAO::updateStatus(int aircraftTaskId, DeviceTaskStatus status, double progress, const QString& phase) const
