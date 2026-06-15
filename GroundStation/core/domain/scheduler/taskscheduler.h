@@ -66,6 +66,13 @@ private:
     void startDownloadTask(const DeviceTask& deviceTask);
     void startSendToDevice(const QString& localPath);
     void completeCurrentAircraftTask(bool success, const QString& message);
+    void reportTaskStatus(DeviceTaskStatus aircraftStatus,
+                          double aircraftProgress,
+                          const QString& phase,
+                          const DeviceTask* deviceTask = nullptr,
+                          DeviceTaskStatus deviceStatus = DeviceTaskStatus::Waiting,
+                          double deviceProgress = 0.0,
+                          const QString& message = QString());
     DownloadTask ensureDownloadTask(const DeviceTask& deviceTask);
     TransferSession ensureTransferSession(const DeviceTask& deviceTask,
                                           const QString& localPath,

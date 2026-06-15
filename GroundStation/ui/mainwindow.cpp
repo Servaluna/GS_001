@@ -72,7 +72,7 @@ void MainWindow::on_btnAlwaysOnTop_toggled(bool checked)
 
 void MainWindow::initButtonsByRole()
 {
-    switch (UserRole::roleFromString(m_userInfo.role)) {
+    switch (UserRole::roleFromId(m_userInfo.role_id)) {
     case UserRole::Admin:
         ui->btnExecute->setVisible(true);
         ui->btnObtain->setVisible(true);
@@ -100,7 +100,7 @@ void MainWindow::loadExecutableTasks()
         return;
     }
 
-    updateTaskList(m_taskService->getExecutableAircraftTasksForUser(m_userInfo.user_id, m_userInfo.role));
+    updateTaskList(m_taskService->getExecutableAircraftTasksForUser(m_userInfo.user_id, m_userInfo.role_id));
 }
 
 void MainWindow::initTableTask()

@@ -2,12 +2,61 @@
 
 #include "../logging/logger.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QSqlError>
 #include <QSqlQuery>
 
 LocalDatabase* LocalDatabase::m_instance = nullptr;
+
+namespace {
+
+QString findGroundStationDataPath(const QString& relativePath)
+{
+    const auto tryFrom = [&](const QString& startPath) -> QString {
+        QDir dir(startPath);
+        for (int i = 0; i < 8; ++i) {
+            if (QFileInfo::exists(dir.filePath("GroundStation.pro"))) {
+                return QDir::cleanPath(dir.filePath(relativePath));
+            }
+
+            const QString nestedProject = dir.filePath("GroundStation/GroundStation.pro");
+            if (QFileInfo::exists(nestedProject)) {
+                return QDir::cleanPath(dir.filePath("GroundStation/" + relativePath));
+            }
+
+            if (!dir.cdUp()) {
+                break;
+            }
+        }
+        return QString();
+    };
+
+    QString resolved = tryFrom(QCoreApplication::applicationDirPath());
+    if (!resolved.isEmpty()) {
+        return resolved;
+    }
+
+    resolved = tryFrom(QDir::currentPath());
+    if (!resolved.isEmpty()) {
+        return resolved;
+    }
+
+    return QDir::cleanPath(QDir(QCoreApplication::applicationDirPath()).filePath(relativePath));
+}
+
+QString resolveDatabasePath(const QString& dbPath)
+{
+    QFileInfo info(dbPath);
+    if (info.isAbsolute()) {
+        return QDir::cleanPath(info.absoluteFilePath());
+    }
+
+    return findGroundStationDataPath(dbPath);
+}
+
+}
 
 LocalDatabase* LocalDatabase::getInstance()
 {
@@ -39,22 +88,22 @@ bool LocalDatabase::init(const QString& dbPath)
         return true;
     }
 
-    m_dbPath = dbPath;
+    m_dbPath = resolveDatabasePath(dbPath);
 
     QDir dir;
-    const QString dirPath = QFileInfo(dbPath).absolutePath();
+    const QString dirPath = QFileInfo(m_dbPath).absolutePath();
     if (!dir.exists(dirPath) && !dir.mkpath(dirPath)) {
         m_lastError = "无法创建数据库目录: " + dirPath;
-        Logger::error("DATABASE_INIT_FAILED", m_lastError, {{"db_path", dbPath}});
+        Logger::error("DATABASE_INIT_FAILED", m_lastError, {{"db_path", m_dbPath}, {"requested_path", dbPath}});
         return false;
     }
 
     m_db = QSqlDatabase::addDatabase("QSQLITE");
-    m_db.setDatabaseName(dbPath);
+    m_db.setDatabaseName(m_dbPath);
 
     if (!m_db.open()) {
         m_lastError = m_db.lastError().text();
-        Logger::error("DATABASE_OPEN_FAILED", "打开数据库失败", {{"db_path", dbPath}, {"error", m_lastError}});
+        Logger::error("DATABASE_OPEN_FAILED", "打开数据库失败", {{"db_path", m_dbPath}, {"requested_path", dbPath}, {"error", m_lastError}});
         return false;
     }
 
@@ -63,11 +112,11 @@ bool LocalDatabase::init(const QString& dbPath)
     if (!createTables()) {
         m_isInitialized = false;
         m_lastError = "创建表失败";
-        Logger::error("DATABASE_INIT_FAILED", m_lastError, {{"db_path", dbPath}});
+        Logger::error("DATABASE_INIT_FAILED", m_lastError, {{"db_path", m_dbPath}, {"requested_path", dbPath}});
         return false;
     }
 
-    Logger::info("DATABASE_READY", "gs_local 数据库初始化成功", {{"db_path", dbPath}});
+    Logger::info("DATABASE_READY", "gs_local 数据库初始化成功", {{"db_path", m_dbPath}, {"requested_path", dbPath}});
     return true;
 }
 

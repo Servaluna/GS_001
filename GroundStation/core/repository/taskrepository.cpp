@@ -111,9 +111,9 @@ TransferSession TaskRepository::getTransferSessionByDeviceTaskId(int deviceTaskI
     return session;
 }
 
-QList<AircraftTask> TaskRepository::getAircraftTasksByAssignedOperator(int operatorUserId)
+QList<AircraftTask> TaskRepository::getAircraftTasksForCurrentOperator(int operatorUserId)
 {
-    const QList<AircraftTask> tasks = m_aircraftTaskDao.getByAssignedOperator(operatorUserId);
+    const QList<AircraftTask> tasks = m_aircraftTaskDao.getByCurrentOperator(operatorUserId);
     for (const AircraftTask& task : tasks) {
         m_aircraftTaskCache.insert(task.aircraft_task_id, task);
     }

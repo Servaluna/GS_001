@@ -31,7 +31,7 @@ public:
     TransferSession getTransferSession(const QString& sessionId);
     TransferSession getTransferSessionByDeviceTaskId(int deviceTaskId);
 
-    QList<AircraftTask> getAircraftTasksByAssignedOperator(int operatorUserId);
+    QList<AircraftTask> getAircraftTasksForCurrentOperator(int operatorUserId);
     QList<AircraftTask> getAllAircraftTasks();
     QList<DeviceTask> getDeviceTasksByAircraftTaskId(int aircraftTaskId);
     QList<DownloadTask> getDownloadTasksByOwner(int ownerUserId);

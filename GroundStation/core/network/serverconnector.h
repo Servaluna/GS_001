@@ -5,6 +5,7 @@
 #include "protocol.h"
 
 #include <QHostAddress>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QTcpSocket>
 
@@ -21,6 +22,8 @@ public:
 
     void loginRequest(const QString& username, const QString& password);
     bool logoutRequest();
+    bool requestCurrentUserTasks(int userId, int roleId);
+    bool updateTaskStatus(const QJsonObject& statusData);
     // 请求下载文件，支持断点续传。
     bool fileDownloadRequest(const QString& fileCode, qint64 offset = 0, const QString& taskUuid = QString());
 
@@ -30,6 +33,8 @@ signals:
     void errorOccurred(const QString& msg);
 
     void loginSuccess(QString token, const UserInfo& userInfo);
+    void currentUserTasksReceived(QJsonArray aircraftTasks, QJsonArray deviceTasks);
+    void taskStatusUpdated(bool success, int aircraftTaskId, int deviceTaskId, QString message);
     // 文件信息接收。
     void fileInfoReceived(QString taskId, qint64 totalSize, const QString& sha256);
     // 文件块接收。

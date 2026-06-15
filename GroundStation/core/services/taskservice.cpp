@@ -6,8 +6,13 @@
 #include "../domain/scheduler/taskscheduler.h"
 #include "../domain/state/taskstatemachine.h"
 #include "../domain/transfer/transfermanager.h"
+#include "../network/serverconnector.h"
 
 #include "models.h"
+
+#include <QEventLoop>
+#include <QJsonValue>
+#include <QTimer>
 
 class DeviceConnector;
 class ServerConnector;
@@ -77,14 +82,83 @@ void TaskService::stop()
     }
 }
 
-QList<AircraftTask> TaskService::getExecutableAircraftTasksForUser(int userId, const QString& role)
+bool TaskService::syncTasksForUser(int userId, int roleId, int timeoutMs)
+{
+    if (!m_initialized) {
+        Logger::warn("TASK_SYNC_REJECTED", "任务服务未初始化", {{"user_id", userId}, {"role_id", roleId}});
+        return false;
+    }
+
+    ServerConnector& server = ServerConnector::instance();
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+
+    bool received = false;
+    bool saved = false;
+
+    QMetaObject::Connection tasksConnection;
+    tasksConnection = connect(&server, &ServerConnector::currentUserTasksReceived,
+                              this,
+                              [&](const QJsonArray& aircraftTasks, const QJsonArray& deviceTasks) {
+        Q_UNUSED(aircraftTasks);
+        received = true;
+        saved = true;
+
+        for (const QJsonValue& value : deviceTasks) {
+            const DeviceTask task = DeviceTask::fromJson(value.toObject());
+            if (!task.isValid() || !m_repository->saveDeviceTask(task)) {
+                saved = false;
+            }
+        }
+
+        Logger::info("TASK_SYNC_FINISHED",
+                     "任务同步完成",
+                     {{"user_id", userId}, {"role_id", roleId}, {"device_task_count", deviceTasks.size()}});
+        loop.quit();
+    });
+
+    QMetaObject::Connection errorConnection;
+    errorConnection = connect(&server, &ServerConnector::errorOccurred,
+                              this,
+                              [&](const QString& error) {
+        Logger::warn("TASK_SYNC_FAILED", "任务同步失败", {{"user_id", userId}, {"role_id", roleId}, {"error", error}});
+        loop.quit();
+    });
+
+    connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+
+    if (!server.requestCurrentUserTasks(userId, roleId)) {
+        disconnect(tasksConnection);
+        disconnect(errorConnection);
+        return false;
+    }
+
+    timer.start(timeoutMs);
+    loop.exec();
+
+    disconnect(tasksConnection);
+    disconnect(errorConnection);
+
+    if (!received) {
+        Logger::warn("TASK_SYNC_TIMEOUT",
+                     "任务同步超时",
+                     {{"user_id", userId}, {"role_id", roleId}, {"timeout_ms", timeoutMs}});
+        return false;
+    }
+
+    m_repository->clearCache();
+    return saved;
+}
+
+QList<AircraftTask> TaskService::getExecutableAircraftTasksForUser(int userId, int roleId)
 {
     if (!m_initialized) {
         return {};
     }
 
-    if (UserRole::roleFromString(role) == UserRole::Operator) {
-        return m_repository->getAircraftTasksByAssignedOperator(userId);
+    if (UserRole::isOperator(roleId)) {
+        return m_repository->getAircraftTasksForCurrentOperator(userId);
     }
 
     return m_repository->getAllAircraftTasks();

@@ -3,6 +3,7 @@
 
 #include "../models/aircrafttask.h"
 
+#include <QJsonArray>
 #include <QObject>
 #include <QString>
 
@@ -25,7 +26,8 @@ public:
     void start();
     void stop();
 
-    QList<AircraftTask> getExecutableAircraftTasksForUser(int userId, const QString& role);
+    bool syncTasksForUser(int userId, int roleId, int timeoutMs = 5000);
+    QList<AircraftTask> getExecutableAircraftTasksForUser(int userId, int roleId);
 
     bool startTask(const QString& aircraftTaskId);
     bool pauseTask(const QString& aircraftTaskId);

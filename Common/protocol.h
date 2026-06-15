@@ -58,6 +58,12 @@ enum Type {
     InstallResult = 6003,          // 安装结果
     DeviceReboot = 6004,            // 设备重启
 
+    // 任务同步相关 (7000-7999)
+    GetCurrentUserTasks = 7001,
+    CurrentUserTasksList = 7002,
+    UpdateTaskStatus = 7003,
+    TaskStatusUpdated = 7004,
+
     // 错误码 (9000-9999)
     Error = 9001,
     InvalidRequest = 9002,

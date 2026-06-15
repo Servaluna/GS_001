@@ -10,17 +10,27 @@
 
 namespace UserRole {
     enum Role {
-        Admin = 0,
-        Engineer = 1,
-        Operator = 2
+        Unknown = 0,
+        Admin = 1,
+        Engineer = 2,
+        Operator = 3
     };
+
+    inline Role roleFromId(int roleId) {
+        switch (roleId) {
+        case Admin: return Admin;
+        case Engineer: return Engineer;
+        case Operator: return Operator;
+        default: return Unknown;
+        }
+    }
 
     inline Role roleFromString(const QString& role) {
         const QString normalized = role.trimmed().toLower();
         if (normalized == "admin") return Admin;
         if (normalized == "engineer") return Engineer;
         if (normalized == "operator" || normalized == "operater") return Operator;
-        return Operator;
+        return Unknown;
     }
 
     inline QString roleToString(Role role) {
@@ -28,9 +38,13 @@ namespace UserRole {
         case Admin: return "Admin";
         case Engineer: return "Engineer";
         case Operator: return "Operator";
-        default: return "Operator";
+        default: return "Unknown";
         }
     }
+
+    inline bool isAdmin(int roleId) { return roleFromId(roleId) == Admin; }
+    inline bool isEngineer(int roleId) { return roleFromId(roleId) == Engineer; }
+    inline bool isOperator(int roleId) { return roleFromId(roleId) == Operator; }
 }
 
 struct RoleInfo {
@@ -65,9 +79,9 @@ struct UserInfo {
 
     bool isValid() const { return user_id > 0; }
     bool isActive() const { return status == 1; }
-    bool isAdmin() const { return UserRole::roleFromString(role) == UserRole::Admin; }
-    bool isEngineer() const { return UserRole::roleFromString(role) == UserRole::Engineer; }
-    bool isOperator() const { return UserRole::roleFromString(role) == UserRole::Operator; }
+    bool isAdmin() const { return UserRole::isAdmin(role_id); }
+    bool isEngineer() const { return UserRole::isEngineer(role_id); }
+    bool isOperator() const { return UserRole::isOperator(role_id); }
 
     static UserInfo fromJson(const QJsonObject& json) {
         UserInfo info;

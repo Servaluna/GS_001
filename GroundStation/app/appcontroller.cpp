@@ -1,6 +1,7 @@
 #include "appcontroller.h"
 
 #include "../core/logging/logger.h"
+#include "../core/localdatabase/localdatabase.h"
 #include "../core/network/deviceconnector.h"
 #include "../core/network/serverconnector.h"
 #include "../core/services/taskservice.h"
@@ -25,6 +26,14 @@ int AppController::start()
     Logger::info("APP_INIT", "初始化地面站应用控制器");
 
     if (!connectToCentralServer()) {
+        return -1;
+    }
+
+    if (!LocalDatabase::getInstance()->init()) {
+        Logger::error("APP_INIT_FAILED", "本地数据库初始化失败");
+        QMessageBox::critical(nullptr,
+                              "本地数据库初始化失败",
+                              "无法初始化本地任务数据库，程序将退出。");
         return -1;
     }
 
@@ -143,6 +152,12 @@ void AppController::onLoginSuccess(QString token, const UserInfo& userInfo)
                  QString("用户 %1 登录成功").arg(userInfo.username),
                  loginContext,
                  {{"username", userInfo.username}, {"role", userInfo.role}, {"role_id", userInfo.role_id}});
+    if (!m_taskService->syncTasksForUser(userInfo.user_id, userInfo.role_id)) {
+        Logger::warn("TASK_SYNC_FAILED_AFTER_LOGIN",
+                     "登录后同步任务失败，将使用本地缓存",
+                     loginContext,
+                     {{"username", userInfo.username}, {"role_id", userInfo.role_id}});
+    }
     showMainPage(token, userInfo);
 }
 

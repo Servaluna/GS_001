@@ -105,7 +105,7 @@ AircraftTask AircraftTaskDAO::getById(int aircraftTaskId) const
     return AircraftTask();
 }
 
-QList<AircraftTask> AircraftTaskDAO::getByAssignedOperator(int operatorUserId) const
+QList<AircraftTask> AircraftTaskDAO::getByCurrentOperator(int operatorUserId) const
 {
     QSqlQuery query(LocalDatabase::getInstance()->getDatabase());
     query.prepare(aggregateSelectSql() + R"(

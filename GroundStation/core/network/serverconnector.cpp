@@ -135,6 +135,30 @@ void ServerConnector::onReadyRead()
                                   msg.data["sha256"].toString());
             break;
 
+        case MessageType::CurrentUserTasksList:
+            emit currentUserTasksReceived(msg.data["aircraft_tasks"].toArray(),
+                                          msg.data["device_tasks"].toArray());
+            break;
+
+        case MessageType::TaskStatusUpdated:
+            if (!msg.data["success"].toBool()) {
+                Logger::warn("TASK_STATUS_UPDATE_RESPONSE",
+                             "任务状态回写失败",
+                             {{"aircraft_task_id", msg.data["aircraft_task_id"].toInt(-1)},
+                              {"device_task_id", msg.data["device_task_id"].toInt(-1)},
+                              {"message", msg.data["message"].toString()}});
+            } else {
+                Logger::debug("TASK_STATUS_UPDATE_RESPONSE",
+                              "任务状态回写成功",
+                              {{"aircraft_task_id", msg.data["aircraft_task_id"].toInt(-1)},
+                               {"device_task_id", msg.data["device_task_id"].toInt(-1)}});
+            }
+            emit taskStatusUpdated(msg.data["success"].toBool(),
+                                   msg.data["aircraft_task_id"].toInt(-1),
+                                   msg.data["device_task_id"].toInt(-1),
+                                   msg.data["message"].toString());
+            break;
+
         case MessageType::FileData: {
             const QByteArray chunkData = QByteArray::fromBase64(msg.data["chunk_data"].toString().toUtf8());
             emit fileChunkReceived(msg.data["task_uuid"].toString(msg.messageId),
@@ -203,6 +227,54 @@ bool ServerConnector::logoutRequest()
         Logger::info("AUTH_LOGOUT_REQUEST", "发送退出登录请求");
     } else {
         Logger::error("AUTH_LOGOUT_REQUEST_FAILED", "退出登录请求发送失败");
+    }
+    return ok;
+}
+
+bool ServerConnector::requestCurrentUserTasks(int userId, int roleId)
+{
+    if (!isConnected()) {
+        Logger::warn("TASK_SYNC_REQUEST_FAILED",
+                     "未连接服务器，无法同步任务",
+                     {{"user_id", userId}, {"role_id", roleId}});
+        emit errorOccurred("未连接到服务器");
+        return false;
+    }
+
+    QJsonObject data;
+    data["user_id"] = userId;
+    data["role_id"] = roleId;
+
+    Message reqMsg(MessageType::GetCurrentUserTasks, data);
+    const bool ok = sendMessage(m_socket, reqMsg);
+    if (ok) {
+        Logger::info("TASK_SYNC_REQUEST",
+                     "发送任务同步请求",
+                     {{"user_id", userId}, {"role_id", roleId}});
+    } else {
+        Logger::error("TASK_SYNC_REQUEST_FAILED",
+                      "任务同步请求发送失败",
+                      {{"user_id", userId}, {"role_id", roleId}});
+        emit errorOccurred("任务同步请求发送失败");
+    }
+    return ok;
+}
+
+bool ServerConnector::updateTaskStatus(const QJsonObject& statusData)
+{
+    if (!isConnected()) {
+        Logger::warn("TASK_STATUS_UPDATE_REQUEST_FAILED",
+                     "未连接服务器，无法回写任务状态",
+                     statusData);
+        return false;
+    }
+
+    Message reqMsg(MessageType::UpdateTaskStatus, statusData);
+    const bool ok = sendMessage(m_socket, reqMsg);
+    if (!ok) {
+        Logger::error("TASK_STATUS_UPDATE_REQUEST_FAILED",
+                      "任务状态回写请求发送失败",
+                      statusData);
     }
     return ok;
 }

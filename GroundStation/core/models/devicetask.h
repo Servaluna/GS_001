@@ -80,6 +80,34 @@ struct DeviceTask
         return task;
     }
 
+    static DeviceTask fromJson(const QJsonObject& json)
+    {
+        DeviceTask task;
+        task.device_task_id = json["device_task_id"].toInt(-1);
+        task.server_device_task_id = json["server_device_task_id"].toInt(task.device_task_id);
+        task.aircraft_task_id = json["aircraft_task_id"].toInt(-1);
+        task.batch_id = json["batch_id"].toInt(-1);
+        task.owner_user_id = json["owner_user_id"].toInt(-1);
+        task.assigned_operator_user_id = json["assigned_operator_user_id"].toInt(-1);
+        task.aircraft_code = json["aircraft_code"].toString();
+        task.device_code = json["device_code"].toString();
+        task.file_code = json["file_code"].toString();
+        task.execution_order = json["execution_order"].toInt(0);
+        task.status = TaskStatusText::deviceFromInt(json["status"].toInt());
+        task.progress = json["progress"].toDouble();
+        task.retry_count = json["retry_count"].toInt();
+        task.transferred_size = json["transferred_size"].toInteger();
+        task.total_size = json["total_size"].toInteger();
+        task.downloaded_size = json["downloaded_size"].toInteger();
+        task.current_phase = json["current_phase"].toString(TaskStatusText::devicePhase(task.status));
+        task.start_time = QDateTime::fromString(json["start_time"].toString(), Qt::ISODate);
+        task.last_update_time = QDateTime::fromString(json["last_update_time"].toString(), Qt::ISODate);
+        task.finish_time = QDateTime::fromString(json["finish_time"].toString(), Qt::ISODate);
+        task.last_error = json["last_error"].toString();
+        task.local_package_path = json["local_package_path"].toString();
+        return task;
+    }
+
     QJsonObject toJson() const
     {
         QJsonObject json;
