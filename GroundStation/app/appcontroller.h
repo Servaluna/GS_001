@@ -11,7 +11,6 @@ class DeviceConnector;
 class LoginDialog;
 class MainWindow;
 class TaskService;
-class deviceconnectorwindow;
 
 class AppController : public QObject
 {
@@ -26,6 +25,7 @@ private slots:
     void onLoginSuccess(QString token, const UserInfo& userInfo);
     void onLogoutRequested();
     void onOpenDeviceConnectorRequested();
+    void onCentralServerDisconnected();
 
 private:
     bool connectToCentralServer();
@@ -37,7 +37,6 @@ private:
 
     QPointer<LoginDialog> m_loginDialog;
     QPointer<MainWindow> m_mainWindow;
-    QPointer<deviceconnectorwindow> m_deviceConnectorWindow;
     QPointer<DeviceConnector> m_deviceConnector;
     QPointer<TaskService> m_taskService;
 };

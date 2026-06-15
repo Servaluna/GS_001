@@ -1,4 +1,4 @@
-#include "ui/mainwindow.h"
+#include "app/appcontroller.h"
 
 #include <QApplication>
 
@@ -6,8 +6,11 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
 
-    MainWindow window;
-    window.show();
+    AppController controller;
+    const int result = controller.start();
+    if (result != 0) {
+        return result;
+    }
 
     return app.exec();
 }

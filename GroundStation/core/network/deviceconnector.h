@@ -3,14 +3,15 @@
 
 #include <QFile>
 #include <QObject>
+#include <QTcpServer>
 #include <QTcpSocket>
 
 struct DeviceStatus {
-    QString deviceId;       // 设备 ID
-    QString deviceName;     // 设备名称
-    bool isOnline;          // 是否在线
-    QString version;        // 当前版本
-    QString lastUpdateTime; // 最后更新时间
+    QString deviceId;
+    QString deviceName;
+    bool isOnline;
+    QString version;
+    QString lastUpdateTime;
 
     DeviceStatus() : isOnline(false) {}
 };
@@ -23,6 +24,8 @@ public:
     explicit DeviceConnector(QObject *parent = nullptr);
     ~DeviceConnector();
 
+    bool startListening(quint16 port = 9001);
+    void stopListening();
     bool connectToCMC(const QString& ip, quint16 port);
     void disconnectFromCMC();
     bool isConnected() const;
@@ -47,7 +50,7 @@ signals:
     void installResult(QString taskId, QString deviceId, bool success, QString message);
 
 private slots:
-    void onConnected();
+    void onNewConnection();
     void onDisconnected();
     void onErrorOccurred(QAbstractSocket::SocketError socketError);
     void onReadyRead();
@@ -55,17 +58,13 @@ private slots:
 
 private:
     enum class Command : quint8 {
-        // CMC -> 地面站
         DeviceStatusFull = 0x01,
         DeviceStatusUpdate = 0x02,
         FileReceiveResult = 0x03,
         InstallResult = 0x04,
-
-        // 地面站 -> CMC
         FileStart = 0x10,
         FileData = 0x11,
         FileEnd = 0x12,
-
         Error = 0xFF
     };
 
@@ -85,7 +84,11 @@ private:
     void handleFileReceiveResult(const QByteArray& payload);
     void handleInstallResult(const QByteArray& payload);
     void cleanupFileTransfer();
+    void cleanupClientConnection();
 
+    QTcpSocket* clientSocket() const;
+
+    QTcpServer* m_server;
     QTcpSocket* m_socket;
     QString m_cmcIp;
     quint16 m_cmcPort;
@@ -105,6 +108,7 @@ private:
     static constexpr int SEND_INTERVAL_MS = 10;
     static constexpr quint16 PACKET_START_MARK = 0x5A5A;
     static constexpr int PACKET_HEADER_SIZE = 9;
+    static constexpr quint16 DEFAULT_LISTEN_PORT = 9001;
 };
 
 #endif // DEVICECONNECTOR_H

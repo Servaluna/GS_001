@@ -1,10 +1,9 @@
 #include "appcontroller.h"
 
-#include "../core/services/taskservice.h"
 #include "../core/logging/logger.h"
 #include "../core/network/deviceconnector.h"
 #include "../core/network/serverconnector.h"
-#include "../ui/deviceconnectorwindow.h"
+#include "../core/services/taskservice.h"
 #include "../ui/logindialog.h"
 #include "../ui/mainwindow.h"
 
@@ -12,6 +11,10 @@
 #include <QEventLoop>
 #include <QMessageBox>
 #include <QTimer>
+
+namespace {
+constexpr quint16 AIRCRAFT_LISTEN_PORT = 9001;
+}
 
 AppController::AppController(QObject *parent)
     : QObject{parent}
@@ -26,6 +29,7 @@ int AppController::start()
     }
 
     m_deviceConnector = new DeviceConnector(this);
+
     m_taskService = new TaskService(this);
     if (!m_taskService->init(&ServerConnector::instance(), m_deviceConnector)) {
         Logger::error("APP_INIT_FAILED", "任务服务初始化失败");
@@ -35,6 +39,8 @@ int AppController::start()
 
     connect(&ServerConnector::instance(), &ServerConnector::loginSuccess,
             this, &AppController::onLoginSuccess);
+    connect(&ServerConnector::instance(), &ServerConnector::disconnected,
+            this, &AppController::onCentralServerDisconnected);
 
     showLoginPage();
     return 0;
@@ -63,12 +69,12 @@ bool AppController::connectToCentralServer()
 
     if (!server.isConnected()) {
         Logger::error("SERVER_CONNECT_FAILED",
-                      "无法连接到服务器 CentralServer 127.0.0.1:8000",
+                      "无法连接服务器 CentralServer 127.0.0.1:8000",
                       serverContext,
                       {{"host", "127.0.0.1"}, {"port", 8000}, {"timeout_ms", 3000}});
         QMessageBox::critical(nullptr,
-                              "连接失败",
-                              "无法连接到服务器 CentralServer 127.0.0.1:8000，请确认服务器已经启动，并且监听地址和端口正确。");
+                              "无法连接服务器",
+                              "无法连接服务器，程序将退出。");
         return false;
     }
 
@@ -121,6 +127,13 @@ void AppController::showMainPage(const QString& token, const UserInfo& userInfo)
 
 void AppController::onLoginSuccess(QString token, const UserInfo& userInfo)
 {
+    if (!m_deviceConnector->startListening(AIRCRAFT_LISTEN_PORT)) {
+        QMessageBox::critical(nullptr,
+                              "飞机连接监听失败",
+                              QString("无法监听飞机连接端口 %1，无法进入地面站主界面。").arg(AIRCRAFT_LISTEN_PORT));
+        return;
+    }
+
     Logger::instance().setOperatorUserId(userInfo.user_id);
     Logger::instance().setSessionId(token);
     LogContext loginContext;
@@ -136,6 +149,9 @@ void AppController::onLoginSuccess(QString token, const UserInfo& userInfo)
 void AppController::onLogoutRequested()
 {
     Logger::info("AUTH_LOGOUT", "用户退出登录");
+    if (m_deviceConnector) {
+        m_deviceConnector->stopListening();
+    }
     ServerConnector::instance().logoutRequest();
     Logger::instance().setOperatorUserId(-1);
     Logger::instance().setSessionId(QString());
@@ -144,24 +160,29 @@ void AppController::onLogoutRequested()
     showLoginPage();
 }
 
+void AppController::onCentralServerDisconnected()
+{
+    Logger::warn("SERVER_DISCONNECTED_DURING_SESSION",
+                 "与 CentralServer 的连接已断开，地面站客户端退出");
+
+    if (m_deviceConnector) {
+        m_deviceConnector->stopListening();
+    }
+    QMessageBox::critical(nullptr,
+                          "无法连接服务器",
+                          "无法连接服务器，程序将退出。");
+    closeDeviceConnectorPage();
+    closeMainPage();
+    closeLoginPage();
+    qApp->quit();
+}
+
 void AppController::onOpenDeviceConnectorRequested()
 {
-    if (!m_mainWindow || !m_deviceConnector) {
-        Logger::warn("CMC_CONNECT_WINDOW_FAILED", "无法打开设备连接窗口，主窗口或设备连接器未初始化");
-        return;
-    }
-
-    if (!m_deviceConnectorWindow) {
-        m_deviceConnectorWindow = new deviceconnectorwindow(m_deviceConnector, m_mainWindow);
-        connect(m_deviceConnectorWindow, &QObject::destroyed, this, [this]() {
-            m_deviceConnectorWindow.clear();
-        });
-    }
-
-    m_deviceConnectorWindow->show();
-    m_deviceConnectorWindow->raise();
-    m_deviceConnectorWindow->activateWindow();
-    Logger::info("CMC_CONNECT_WINDOW_OPENED", "打开设备连接窗口");
+    const QString message = m_deviceConnector && m_deviceConnector->isConnected()
+        ? "AC-1001 已连接到地面站。"
+        : QString("地面站正在监听飞机连接端口 %1，请在 AC-1001 模拟器的 ADG 区域点击连接。").arg(AIRCRAFT_LISTEN_PORT);
+    QMessageBox::information(m_mainWindow, "飞机连接状态", message);
 }
 
 void AppController::closeLoginPage()
@@ -184,9 +205,5 @@ void AppController::closeMainPage()
 
 void AppController::closeDeviceConnectorPage()
 {
-    if (m_deviceConnectorWindow) {
-        m_deviceConnectorWindow->hide();
-        m_deviceConnectorWindow->deleteLater();
-        m_deviceConnectorWindow.clear();
-    }
+    // deviceconnectorwindow 暂时保留在项目中，但当前由 AC-1001 主动连接 GS 监听端口。
 }

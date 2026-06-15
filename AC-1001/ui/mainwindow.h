@@ -17,8 +17,15 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+signals:
+    void toggleGroundStationConnectionRequested();
+
+public slots:
+    void setConnectionStatus(bool connected, const QString& message);
+
 private:
     Ui::MainWindow *ui;
+    bool m_connected = false;
 };
 
 #endif // MAINWINDOW_H
