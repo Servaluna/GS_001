@@ -16,6 +16,11 @@ QJsonObject TaskService::getCurrentUserTasks(int userId, int roleId) const
     return response;
 }
 
+FileInfo TaskService::getFileByCode(const QString& fileCode) const
+{
+    return m_taskDao ? m_taskDao->getFileByCode(fileCode) : FileInfo();
+}
+
 bool TaskService::updateTaskStatus(const QJsonObject& statusData) const
 {
     if (!m_taskDao) {

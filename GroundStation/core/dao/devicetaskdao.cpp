@@ -63,7 +63,7 @@ bool DeviceTaskDAO::upsert(const DeviceTask& task) const
     query.bindValue(":execution_order", task.execution_order);
     query.bindValue(":status", TaskStatusText::toInt(task.status));
     query.bindValue(":progress", task.progress);
-    query.bindValue(":current_phase", task.current_phase);
+    query.bindValue(":current_phase", TaskStatusText::normalizeDevicePhase(task.current_phase, task.status));
     query.bindValue(":retry_count", task.retry_count);
     query.bindValue(":local_package_path", task.local_package_path);
     query.bindValue(":total_size", qint64(task.total_size));

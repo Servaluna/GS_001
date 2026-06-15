@@ -95,7 +95,6 @@ bool AppController::connectToCentralServer()
 
 void AppController::showLoginPage()
 {
-    closeDeviceConnectorPage();
     closeMainPage();
 
     if (!m_loginDialog) {
@@ -119,8 +118,6 @@ void AppController::showMainPage(const QString& token, const UserInfo& userInfo)
     connect(m_mainWindow, &QObject::destroyed, this, [this]() {
         m_mainWindow.clear();
     });
-    connect(m_mainWindow, &MainWindow::openDeviceConnector,
-            this, &AppController::onOpenDeviceConnectorRequested);
     connect(m_mainWindow, &MainWindow::logoutFromMainWindow,
             this, &AppController::onLogoutRequested);
     connect(m_taskService, &TaskService::taskFinished,
@@ -140,7 +137,15 @@ void AppController::showMainPage(const QString& token, const UserInfo& userInfo)
                     m_mainWindow->showExecutePageAndReload();
                 }
             });
+    connect(m_deviceConnector, &DeviceConnector::cmcConnectionChanged,
+            m_mainWindow, [this](bool connected, const QString&) {
+                if (m_mainWindow) {
+                    m_mainWindow->setAircraftConnectionStatus(connected);
+                }
+            });
 
+    m_mainWindow->setNetworkConnectionStatus(ServerConnector::instance().isConnected());
+    m_mainWindow->setAircraftConnectionStatus(m_deviceConnector && m_deviceConnector->isConnected());
     m_mainWindow->show();
     closeLoginPage();
 }
@@ -197,7 +202,6 @@ void AppController::onLogoutRequested()
     ServerConnector::instance().logoutRequest();
     Logger::instance().setOperatorUserId(-1);
     Logger::instance().setSessionId(QString());
-    closeDeviceConnectorPage();
     closeMainPage();
     showLoginPage();
 }
@@ -213,18 +217,9 @@ void AppController::onCentralServerDisconnected()
     QMessageBox::critical(nullptr,
                           "无法连接服务器",
                           "无法连接服务器，程序将退出。");
-    closeDeviceConnectorPage();
     closeMainPage();
     closeLoginPage();
     qApp->quit();
-}
-
-void AppController::onOpenDeviceConnectorRequested()
-{
-    const QString message = m_deviceConnector && m_deviceConnector->isConnected()
-        ? "AC-1001 已连接到地面站。"
-        : QString("地面站正在监听飞机连接端口 %1，请在 AC-1001 模拟器的 ADG 区域点击连接。").arg(AIRCRAFT_LISTEN_PORT);
-    QMessageBox::information(m_mainWindow, "飞机连接状态", message);
 }
 
 void AppController::closeLoginPage()
@@ -243,9 +238,4 @@ void AppController::closeMainPage()
         m_mainWindow->deleteLater();
         m_mainWindow.clear();
     }
-}
-
-void AppController::closeDeviceConnectorPage()
-{
-    // deviceconnectorwindow 暂时保留在项目中，但当前由 AC-1001 主动连接 GS 监听端口。
 }

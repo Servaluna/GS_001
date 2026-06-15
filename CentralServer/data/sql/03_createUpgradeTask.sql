@@ -16,11 +16,11 @@ SET @aircraft_ac1004_id = (SELECT aircraft_id FROM aircrafts WHERE aircraft_code
 SET @aircraft_ac1005_id = (SELECT aircraft_id FROM aircrafts WHERE aircraft_code = 'AC-1005' LIMIT 1);
 
 INSERT INTO aircraft_upgrade_task (batch_id, aircraft_id, assigned_operator_user_id, status, progress, current_phase) VALUES
-(@batch1_id, @aircraft_ac1001_id, @operator1_id, 0, 0, '等待开始'),
-(@batch1_id, @aircraft_ac1002_id, @operator1_id, 0, 0, '等待开始'),
-(@batch2_id, @aircraft_ac1003_id, @operator2_id, 0, 0, '等待开始'),
-(@batch2_id, @aircraft_ac1004_id, @operator2_id, 0, 0, '等待开始'),
-(@batch2_id, @aircraft_ac1005_id, @operator2_id, 0, 0, '等待开始');
+(@batch1_id, @aircraft_ac1001_id, @operator1_id, 0, 0, 'waiting'),
+(@batch1_id, @aircraft_ac1002_id, @operator1_id, 0, 0, 'waiting'),
+(@batch2_id, @aircraft_ac1003_id, @operator2_id, 0, 0, 'waiting'),
+(@batch2_id, @aircraft_ac1004_id, @operator2_id, 0, 0, 'waiting'),
+(@batch2_id, @aircraft_ac1005_id, @operator2_id, 0, 0, 'waiting');
 
 SET @ac_task1_id = (SELECT aircraft_task_id FROM aircraft_upgrade_task WHERE batch_id = @batch1_id AND aircraft_id = @aircraft_ac1001_id LIMIT 1);
 SET @ac_task2_id = (SELECT aircraft_task_id FROM aircraft_upgrade_task WHERE batch_id = @batch1_id AND aircraft_id = @aircraft_ac1002_id LIMIT 1);

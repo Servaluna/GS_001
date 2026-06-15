@@ -14,6 +14,11 @@ namespace {
 
 QString findGroundStationDataPath(const QString& relativePath)
 {
+    const QString projectDir = QString::fromUtf8(GROUNDSTATION_PROJECT_DIR);
+    if (!projectDir.isEmpty() && QFileInfo::exists(QDir(projectDir).filePath("GroundStation.pro"))) {
+        return QDir::cleanPath(QDir(projectDir).filePath(relativePath));
+    }
+
     const auto tryFrom = [&](const QString& startPath) -> QString {
         QDir dir(startPath);
         for (int i = 0; i < 8; ++i) {

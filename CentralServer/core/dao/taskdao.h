@@ -12,6 +12,7 @@ public:
 
     QJsonArray getAircraftTasksForUser(int userId, int roleId) const;
     QJsonArray getDeviceTasksForUser(int userId, int roleId) const;
+    FileInfo getFileByCode(const QString& fileCode) const;
     bool updateAircraftTaskStatus(const QJsonObject& statusData) const;
     bool updateDeviceTaskStatus(const QJsonObject& statusData) const;
     bool insertTaskAuditLog(const QJsonObject& statusData) const;

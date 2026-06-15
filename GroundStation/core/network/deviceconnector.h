@@ -26,8 +26,6 @@ public:
 
     bool startListening(quint16 port = 9001);
     void stopListening();
-    bool connectToCMC(const QString& ip, quint16 port);
-    void disconnectFromCMC();
     bool isConnected() const;
 
     void sendFileToDevice(const QString& taskId,

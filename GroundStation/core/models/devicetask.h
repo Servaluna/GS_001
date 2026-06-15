@@ -99,7 +99,7 @@ struct DeviceTask
         task.transferred_size = json["transferred_size"].toInteger();
         task.total_size = json["total_size"].toInteger();
         task.downloaded_size = json["downloaded_size"].toInteger();
-        task.current_phase = json["current_phase"].toString(TaskStatusText::devicePhase(task.status));
+        task.current_phase = TaskStatusText::normalizeDevicePhase(json["current_phase"].toString(), task.status);
         task.start_time = QDateTime::fromString(json["start_time"].toString(), Qt::ISODate);
         task.last_update_time = QDateTime::fromString(json["last_update_time"].toString(), Qt::ISODate);
         task.finish_time = QDateTime::fromString(json["finish_time"].toString(), Qt::ISODate);

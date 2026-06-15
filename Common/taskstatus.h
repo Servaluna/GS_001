@@ -136,6 +136,35 @@ inline QString devicePhase(DeviceTaskStatus status)
     return "waiting";
 }
 
+inline QString normalizeDevicePhase(const QString& phase, DeviceTaskStatus fallbackStatus)
+{
+    const QString normalized = phase.trimmed().toLower();
+    if (normalized == "waiting" ||
+        normalized == "downloading" ||
+        normalized == "transferring" ||
+        normalized == "installing" ||
+        normalized == "verifying" ||
+        normalized == "success" ||
+        normalized == "failed") {
+        return normalized;
+    }
+
+    return devicePhase(fallbackStatus);
+}
+
+inline QString devicePhaseDisplayName(const QString& phase, DeviceTaskStatus fallbackStatus)
+{
+    const QString normalized = normalizeDevicePhase(phase, fallbackStatus);
+    if (normalized == "waiting") return "待执行";
+    if (normalized == "downloading") return "下载中";
+    if (normalized == "transferring") return "传输中";
+    if (normalized == "installing") return "安装中";
+    if (normalized == "verifying") return "校验中";
+    if (normalized == "success") return "已完成";
+    if (normalized == "failed") return "失败";
+    return "未知";
+}
+
 inline QString deviceDisplayName(DeviceTaskStatus status)
 {
     switch (status) {

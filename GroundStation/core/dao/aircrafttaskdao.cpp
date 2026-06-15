@@ -42,7 +42,15 @@ QString aggregateSelectSql()
                 ELSE 0
             END AS status,
             COALESCE(AVG(progress), 0) AS progress,
-            MAX(current_phase) AS current_phase,
+            CASE
+                WHEN SUM(CASE WHEN status = 6 THEN 1 ELSE 0 END) > 0 THEN 'failed'
+                WHEN SUM(CASE WHEN status = 4 THEN 1 ELSE 0 END) > 0 THEN 'verifying'
+                WHEN SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END) > 0 THEN 'installing'
+                WHEN SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) > 0 THEN 'transferring'
+                WHEN SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) > 0 THEN 'downloading'
+                WHEN COUNT(*) > 0 AND SUM(CASE WHEN status = 5 THEN 1 ELSE 0 END) = COUNT(*) THEN 'success'
+                ELSE 'waiting'
+            END AS current_phase,
             '' AS current_client_id,
             MIN(start_time) AS start_time,
             MAX(last_update_time) AS last_update_time,
@@ -169,7 +177,7 @@ bool AircraftTaskDAO::updateStatus(int aircraftTaskId, DeviceTaskStatus status, 
     )");
     query.bindValue(":status", statusValue);
     query.bindValue(":progress", progress);
-    query.bindValue(":current_phase", phase.isEmpty() ? TaskStatusText::devicePhase(status) : phase);
+    query.bindValue(":current_phase", TaskStatusText::normalizeDevicePhase(phase, status));
     query.bindValue(":last_update_time", QDateTime::currentDateTime().toString(Qt::ISODate));
     query.bindValue(":finish_time", QDateTime::currentDateTime().toString(Qt::ISODate));
     query.bindValue(":aircraft_task_id", aircraftTaskId);

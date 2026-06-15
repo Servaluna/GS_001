@@ -24,7 +24,6 @@ public:
 private slots:
     void onLoginSuccess(QString token, const UserInfo& userInfo);
     void onLogoutRequested();
-    void onOpenDeviceConnectorRequested();
     void onCentralServerDisconnected();
     void syncTasksAndShowMainPage();
 
@@ -34,7 +33,6 @@ private:
     void showMainPage(const QString& token, const UserInfo& userInfo);
     void closeLoginPage();
     void closeMainPage();
-    void closeDeviceConnectorPage();
 
     QPointer<LoginDialog> m_loginDialog;
     QPointer<MainWindow> m_mainWindow;

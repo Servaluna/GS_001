@@ -6,6 +6,100 @@
 #include "../services/taskservice.h"
 #include "../services/userservice.h"
 
+#include <QCryptographicHash>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+
+#ifndef CENTRALSERVER_PROJECT_DIR
+#define CENTRALSERVER_PROJECT_DIR ""
+#endif
+
+namespace {
+
+constexpr qint64 FILE_CHUNK_SIZE = 64 * 1024;
+
+QString centralServerProjectDir()
+{
+    const QString projectDir = QString::fromUtf8(CENTRALSERVER_PROJECT_DIR);
+    if (!projectDir.isEmpty() && QFileInfo::exists(QDir(projectDir).filePath("CentralServer.pro"))) {
+        return QDir::cleanPath(projectDir);
+    }
+    return QDir::currentPath();
+}
+
+QString defaultStoragePath(const FileInfo& fileInfo)
+{
+    const QString fileName = fileInfo.file_name.isEmpty()
+        ? fileInfo.file_code + ".bin"
+        : fileInfo.file_name;
+    return QDir::cleanPath(QDir(centralServerProjectDir())
+        .filePath(QString("data/storage/%1/%2").arg(fileInfo.file_code, fileName)));
+}
+
+QString resolveStoragePath(const FileInfo& fileInfo)
+{
+    QFileInfo storageInfo(fileInfo.storage_path);
+    if (storageInfo.isAbsolute() && storageInfo.exists()) {
+        return QDir::cleanPath(storageInfo.absoluteFilePath());
+    }
+
+    const QString projectRelative = QDir(centralServerProjectDir()).filePath(fileInfo.storage_path);
+    if (QFileInfo::exists(projectRelative)) {
+        return QDir::cleanPath(QFileInfo(projectRelative).absoluteFilePath());
+    }
+
+    return defaultStoragePath(fileInfo);
+}
+
+QString calculateSha256(const QString& filePath)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return QString();
+    }
+
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    if (!hash.addData(&file)) {
+        return QString();
+    }
+    return QString::fromLatin1(hash.result().toHex());
+}
+
+bool ensurePlaceholderFile(const FileInfo& fileInfo, const QString& path)
+{
+    if (QFileInfo::exists(path)) {
+        return true;
+    }
+
+    QDir dir(QFileInfo(path).absolutePath());
+    if (!dir.exists() && !dir.mkpath(".")) {
+        return false;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        return false;
+    }
+
+    const QByteArray seed = QString("GS_001:%1:%2\n")
+        .arg(fileInfo.file_code, fileInfo.version)
+        .toUtf8();
+    const qint64 targetSize = qMax<qint64>(fileInfo.file_size, seed.size());
+    qint64 written = 0;
+    while (written < targetSize) {
+        const qint64 remaining = targetSize - written;
+        const QByteArray chunk = seed.left(static_cast<int>(qMin<qint64>(seed.size(), remaining)));
+        if (file.write(chunk) != chunk.size()) {
+            return false;
+        }
+        written += chunk.size();
+    }
+    return true;
+}
+
+}
+
 ClientHandler::ClientHandler(QTcpSocket* socket, QObject *parent)
     : QObject{parent}
     , m_socket(socket)
@@ -64,6 +158,10 @@ void ClientHandler::onReadyRead()
             handleTaskStatusUpdate(msg);
             break;
 
+        case MessageType::GetTaskFile:
+            handleTaskFileRequest(msg);
+            break;
+
         default:
             ServerLogger::debug("CLIENT_MESSAGE_IGNORED",
                                 "收到未处理消息",
@@ -72,6 +170,115 @@ void ClientHandler::onReadyRead()
             break;
         }
     }
+}
+
+void ClientHandler::handleTaskFileRequest(const Message& reqMsg)
+{
+    if (m_loggedInUserId <= 0 || m_loggedInRoleId == UserRole::Unknown) {
+        sendMessage(m_socket, Message::createErrorResponse(reqMsg, StatusCode::PermissionDenied, "请先登录后再下载文件"));
+        return;
+    }
+
+    const QString fileCode = reqMsg.data["file_code"].toString(reqMsg.data["fileId"].toString()).trimmed();
+    const QString taskUuid = reqMsg.data["task_uuid"].toString(reqMsg.messageId);
+    const qint64 offset = reqMsg.data["offset"].toInteger(0);
+    if (fileCode.isEmpty() || offset < 0) {
+        sendMessage(m_socket, Message::createErrorResponse(reqMsg, StatusCode::InvalidParams, "文件下载参数无效"));
+        return;
+    }
+
+    const FileInfo fileInfo = m_taskService->getFileByCode(fileCode);
+    if (!fileInfo.isValid()) {
+        sendMessage(m_socket, Message::createErrorResponse(reqMsg, StatusCode::NotFound, "文件不存在或已停用"));
+        return;
+    }
+
+    const QString filePath = resolveStoragePath(fileInfo);
+    if (!QFileInfo::exists(filePath)) {
+        if (!ensurePlaceholderFile(fileInfo, filePath)) {
+            ServerLogger::error("DOWNLOAD_FILE_PREPARE_FAILED",
+                                "准备下载文件失败",
+                                {{"file_code", fileCode}, {"path", filePath}});
+            sendMessage(m_socket, Message::createErrorResponse(reqMsg, StatusCode::NotFound, "服务器文件不存在"));
+            return;
+        }
+
+        ServerLogger::warn("DOWNLOAD_FILE_FALLBACK_CREATED",
+                           "数据库文件路径不存在，已创建测试升级包",
+                           {{"file_code", fileCode}, {"path", filePath}, {"size", fileInfo.file_size}});
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        ServerLogger::error("DOWNLOAD_FILE_OPEN_FAILED",
+                            "打开下载文件失败",
+                            {{"file_code", fileCode}, {"path", filePath}, {"error", file.errorString()}});
+        sendMessage(m_socket, Message::createErrorResponse(reqMsg, StatusCode::Failed, "服务器文件打开失败"));
+        return;
+    }
+
+    const qint64 totalSize = file.size();
+    if (offset > totalSize) {
+        sendMessage(m_socket, Message::createErrorResponse(reqMsg, StatusCode::InvalidParams, "下载偏移量超过文件大小"));
+        return;
+    }
+
+    const QString sha256 = calculateSha256(filePath);
+    QJsonObject infoData;
+    infoData["task_uuid"] = taskUuid;
+    infoData["file_code"] = fileCode;
+    infoData["file_name"] = fileInfo.file_name;
+    infoData["total_size"] = totalSize;
+    infoData["sha256"] = sha256;
+    infoData["offset"] = offset;
+
+    Message infoMsg = Message::createResponse(reqMsg, infoData);
+    if (!sendMessage(m_socket, infoMsg)) {
+        return;
+    }
+
+    file.seek(offset);
+    int chunkIndex = 0;
+    if (offset == totalSize) {
+        QJsonObject chunkData;
+        chunkData["task_uuid"] = taskUuid;
+        chunkData["file_code"] = fileCode;
+        chunkData["chunk_index"] = chunkIndex;
+        chunkData["chunk_data"] = QString();
+        chunkData["is_last"] = true;
+        Message chunkMsg(MessageType::FileData, chunkData);
+        chunkMsg.messageId = reqMsg.messageId;
+        sendMessage(m_socket, chunkMsg);
+        return;
+    }
+
+    while (!file.atEnd()) {
+        const QByteArray chunk = file.read(FILE_CHUNK_SIZE);
+        if (chunk.isEmpty() && file.error() != QFile::NoError) {
+            ServerLogger::error("DOWNLOAD_FILE_READ_FAILED",
+                                "读取下载文件失败",
+                                {{"file_code", fileCode}, {"path", filePath}, {"error", file.errorString()}});
+            sendMessage(m_socket, Message::createErrorResponse(reqMsg, StatusCode::Failed, "服务器文件读取失败"));
+            return;
+        }
+
+        QJsonObject chunkData;
+        chunkData["task_uuid"] = taskUuid;
+        chunkData["file_code"] = fileCode;
+        chunkData["chunk_index"] = chunkIndex++;
+        chunkData["chunk_data"] = QString::fromLatin1(chunk.toBase64());
+        chunkData["is_last"] = file.atEnd();
+
+        Message chunkMsg(MessageType::FileData, chunkData);
+        chunkMsg.messageId = reqMsg.messageId;
+        if (!sendMessage(m_socket, chunkMsg)) {
+            return;
+        }
+    }
+
+    ServerLogger::info("DOWNLOAD_FILE_SENT",
+                       "任务文件发送完成",
+                       {{"file_code", fileCode}, {"task_uuid", taskUuid}, {"total_size", totalSize}, {"offset", offset}});
 }
 
 void ClientHandler::onDisconnected()

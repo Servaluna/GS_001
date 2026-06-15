@@ -182,6 +182,64 @@ QJsonArray TaskDAO::getDeviceTasksForUser(int userId, int roleId) const
     return tasks;
 }
 
+FileInfo TaskDAO::getFileByCode(const QString& fileCode) const
+{
+    FileInfo info;
+    if (fileCode.trimmed().isEmpty()) {
+        return info;
+    }
+
+    QSqlDatabase db = DatabaseManager::instance().getDatabase();
+    if (!db.isOpen()) {
+        ServerLogger::error("DATABASE_QUERY_REJECTED",
+                            "数据库未连接，无法查询文件",
+                            {{"file_code", fileCode}});
+        return info;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(R"(
+        SELECT file_id, file_code, file_name, file_type, file_size,
+               sha256_hash, storage_path, version, description,
+               status, uploader_user_id, created_at, updated_at
+        FROM files
+        WHERE file_code = :file_code AND status = 1
+        LIMIT 1
+    )");
+    query.bindValue(":file_code", fileCode);
+
+    if (!query.exec()) {
+        ServerLogger::error("DATABASE_QUERY_FAILED",
+                            "查询文件信息失败",
+                            {{"file_code", fileCode}, {"error", query.lastError().text()}});
+        return info;
+    }
+
+    if (!query.next()) {
+        ServerLogger::warn("FILE_NOT_FOUND",
+                           "未找到文件信息",
+                           {{"file_code", fileCode}});
+        return info;
+    }
+
+    info.file_id = query.value("file_id").toInt();
+    info.file_code = query.value("file_code").toString();
+    info.file_name = query.value("file_name").toString();
+    info.file_type = FileType::fromInt(query.value("file_type").toInt());
+    info.file_size = query.value("file_size").toLongLong();
+    info.sha256_hash = query.value("sha256_hash").toString();
+    info.storage_path = query.value("storage_path").toString();
+    info.version = query.value("version").toString();
+    info.description = query.value("description").toString();
+    info.status = query.value("status").toInt();
+    info.uploader_user_id = query.value("uploader_user_id").isNull()
+        ? -1
+        : query.value("uploader_user_id").toInt();
+    info.created_at = query.value("created_at").toDateTime();
+    info.updated_at = query.value("updated_at").toDateTime();
+    return info;
+}
+
 bool TaskDAO::updateAircraftTaskStatus(const QJsonObject& statusData) const
 {
     const int aircraftTaskId = statusData["aircraft_task_id"].toInt(-1);

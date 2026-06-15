@@ -62,17 +62,6 @@ void DeviceConnector::stopListening()
     Logger::info("AIRCRAFT_LISTEN_STOPPED", "地面站已停止监听飞机连接");
 }
 
-bool DeviceConnector::connectToCMC(const QString& ip, quint16 port)
-{
-    Q_UNUSED(ip);
-    return startListening(port);
-}
-
-void DeviceConnector::disconnectFromCMC()
-{
-    stopListening();
-}
-
 bool DeviceConnector::isConnected() const
 {
     return m_socket && m_socket->state() == QAbstractSocket::ConnectedState && m_isConnected;

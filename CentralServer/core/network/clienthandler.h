@@ -35,6 +35,7 @@ private:
     void handleLogoutRequest(const Message& reqMsg);
     void handleCurrentUserTasksRequest(const Message& reqMsg);
     void handleTaskStatusUpdate(const Message& reqMsg);
+    void handleTaskFileRequest(const Message& reqMsg);
 
     QTcpSocket* m_socket = nullptr;
     QByteArray m_buffer;

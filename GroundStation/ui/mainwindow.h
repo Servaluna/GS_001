@@ -5,7 +5,6 @@
 #include "../core/models/aircrafttask.h"
 
 #include <QCloseEvent>
-#include <QColor>
 #include <QCheckBox>
 #include <QMainWindow>
 #include <QMessageBox>
@@ -33,6 +32,8 @@ public:
 
     void updateTaskList(const QList<AircraftTask>& tasks);
     void showExecutePageAndReload();
+    void setNetworkConnectionStatus(bool connected);
+    void setAircraftConnectionStatus(bool connected);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -44,11 +45,9 @@ private slots:
     void on_btnObtain_clicked();
     void on_btnLogs_clicked();
 
-    void on_btnConnectToDevices_clicked();
     void on_btnLogout_clicked();
 
 signals:
-    void openDeviceConnector();
     void logoutFromMainWindow();
 
 private:
@@ -63,8 +62,6 @@ private:
     void addTaskToTable(const AircraftTask& task, int row);
     QCheckBox* taskCheckBoxAt(int row) const;
     void onTaskCheckChanged(QCheckBox* source, bool checked);
-    QString getStatusText(DeviceTaskStatus status);
-    QColor getStatusColor(DeviceTaskStatus status);
     QString selectedAircraftTaskId() const;
 
 private:

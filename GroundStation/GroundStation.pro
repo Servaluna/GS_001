@@ -4,6 +4,8 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
 
+DEFINES += GROUNDSTATION_PROJECT_DIR=\\\"$$PWD\\\"
+
 # You can make your code fail to compile if it uses deprecated APIs.
 # In order to do so, uncomment the following line.
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
@@ -28,7 +30,6 @@ SOURCES += \
     core/domain/state/taskstatemachine.cpp \
     core/domain/transfer/transfermanager.cpp \
     main.cpp \
-    ui/deviceconnectorwindow.cpp \
     ui/logindialog.cpp \
     ui/mainwindow.cpp \
     core/network/serverconnector.cpp
@@ -53,13 +54,11 @@ HEADERS += \
     core/domain/scheduler/taskscheduler.h \
     core/domain/state/taskstatemachine.h \
     core/domain/transfer/transfermanager.h \
-    ui/deviceconnectorwindow.h \
     ui/logindialog.h \
     ui/mainwindow.h \
     core/network/serverconnector.h
 
 FORMS += \
-    ui/deviceconnectorwindow.ui \
     ui/logindialog.ui \
     ui/mainwindow.ui
 

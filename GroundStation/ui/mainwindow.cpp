@@ -1,4 +1,4 @@
-﻿#include "mainwindow.h"
+#include "mainwindow.h"
 #include "ui_mainwindow.h"
 
 #include "../core/logging/logger.h"
@@ -47,12 +47,14 @@ void MainWindow::initUI()
     ui->btnAlwaysOnTop->setChecked(false);
     ui->btnAlwaysOnTop->setText("置顶");
     ui->btnAlwaysOnTop->setToolTip("让地面站窗口保持在屏幕最前面");
+    setNetworkConnectionStatus(true);
+    setAircraftConnectionStatus(false);
 
     initButtonsByRole();
     initTableTask();
     showTaskStartControls();
 
-    ui->stackedWidget->setCurrentIndex(0);
+    ui->stkMainPages->setCurrentIndex(0);
 
     connect(ui->btnAlwaysOnTop, &QPushButton::toggled,
             this, &MainWindow::on_btnAlwaysOnTop_toggled);
@@ -120,20 +122,20 @@ void MainWindow::loadExecutableTasks()
 
 void MainWindow::showTaskStartControls()
 {
-    ui->label_7->hide();
-    ui->label_8->hide();
-    ui->progressBar->hide();
+    ui->lblCurrentFile->hide();
+    ui->lblCurrentPhase->hide();
+    ui->progressTask->hide();
 
     if (!m_btnStartAircraftTask) {
-        m_btnStartAircraftTask = new QPushButton("执行升级任务", ui->widget_8);
+        m_btnStartAircraftTask = new QPushButton("执行升级任务", ui->pnlTaskActions);
         m_btnStartAircraftTask->setObjectName("btnStartAircraftTaskRuntime");
         m_btnStartAircraftTask->setMinimumWidth(120);
-        ui->horizontalLayout_2->addWidget(m_btnStartAircraftTask);
+        ui->layTaskActions->addWidget(m_btnStartAircraftTask);
     }
 
     if (!m_taskStartSpacer) {
         m_taskStartSpacer = new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum);
-        ui->horizontalLayout_2->insertSpacerItem(0, m_taskStartSpacer);
+        ui->layTaskActions->insertSpacerItem(0, m_taskStartSpacer);
     }
 
     m_btnStartAircraftTask->show();
@@ -145,41 +147,43 @@ void MainWindow::showTaskProgressControls()
         m_btnStartAircraftTask->hide();
     }
     if (m_taskStartSpacer) {
-        ui->horizontalLayout_2->removeItem(m_taskStartSpacer);
+        ui->layTaskActions->removeItem(m_taskStartSpacer);
         delete m_taskStartSpacer;
         m_taskStartSpacer = nullptr;
     }
-    ui->label_7->show();
-    ui->label_8->show();
-    ui->progressBar->show();
+    ui->lblCurrentFile->show();
+    ui->lblCurrentPhase->show();
+    ui->progressTask->show();
 }
 
 void MainWindow::initTableTask()
 {
-    QStringList headers = {"选择", "飞机任务ID", "批次ID", "飞机编号", "状态",
-                           "进度", "当前阶段"};
-    ui->tableTask->setColumnCount(headers.size());
-    ui->tableTask->setHorizontalHeaderLabels(headers);
+    QStringList headers = {"选择", "飞机任务ID", "批次ID", "飞机编号", "当前阶段"};
+    ui->tblTasks->setColumnCount(headers.size());
+    ui->tblTasks->setHorizontalHeaderLabels(headers);
 
-    ui->tableTask->setColumnWidth(0, 50);
-    ui->tableTask->setColumnWidth(1, 100);
-    ui->tableTask->setColumnWidth(2, 80);
-    ui->tableTask->setColumnWidth(3, 120);
-    ui->tableTask->setColumnWidth(4, 80);
-    ui->tableTask->setColumnWidth(5, 80);
-    ui->tableTask->setColumnWidth(6, 140);
+    ui->tblTasks->setColumnWidth(0, 50);
+    ui->tblTasks->setColumnWidth(1, 100);
+    ui->tblTasks->setColumnWidth(2, 80);
+    ui->tblTasks->setColumnWidth(3, 150);
+    ui->tblTasks->setColumnWidth(4, 160);
 
-    ui->tableTask->horizontalHeader()->setStretchLastSection(true);
-    ui->tableTask->horizontalHeader()->setHighlightSections(false);
-    ui->tableTask->horizontalHeader()->setDefaultAlignment(Qt::AlignCenter);
-    ui->tableTask->setAlternatingRowColors(false);
-    ui->tableTask->setSelectionBehavior(QAbstractItemView::SelectRows);
-    ui->tableTask->setSelectionMode(QAbstractItemView::SingleSelection);
-    ui->tableTask->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    ui->tableTask->setShowGrid(false);
-    ui->tableTask->setFocusPolicy(Qt::NoFocus);
-    ui->tableTask->verticalHeader()->setDefaultSectionSize(38);
-    ui->tableTask->setStyleSheet(
+    ui->tblTasks->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Fixed);
+    ui->tblTasks->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    ui->tblTasks->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    ui->tblTasks->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+    ui->tblTasks->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+    ui->tblTasks->horizontalHeader()->setStretchLastSection(false);
+    ui->tblTasks->horizontalHeader()->setHighlightSections(false);
+    ui->tblTasks->horizontalHeader()->setDefaultAlignment(Qt::AlignCenter);
+    ui->tblTasks->setAlternatingRowColors(false);
+    ui->tblTasks->setSelectionBehavior(QAbstractItemView::SelectRows);
+    ui->tblTasks->setSelectionMode(QAbstractItemView::SingleSelection);
+    ui->tblTasks->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    ui->tblTasks->setShowGrid(false);
+    ui->tblTasks->setFocusPolicy(Qt::NoFocus);
+    ui->tblTasks->verticalHeader()->setDefaultSectionSize(38);
+    ui->tblTasks->setStyleSheet(
         "QTableWidget {"
         "border: 1px solid #d7dce2;"
         "background: #ffffff;"
@@ -212,8 +216,8 @@ void MainWindow::updateTaskList(const QList<AircraftTask>& tasks)
     Logger::info("TASK_TABLE_RENDER",
                  "刷新执行页面任务表",
                  {{"aircraft_task_count", tasks.size()}});
-    const QSignalBlocker blocker(ui->tableTask);
-    ui->tableTask->setRowCount(tasks.size());
+    const QSignalBlocker blocker(ui->tblTasks);
+    ui->tblTasks->setRowCount(tasks.size());
     for (int i = 0; i < tasks.size(); ++i) {
         addTaskToTable(tasks[i], i);
     }
@@ -221,13 +225,13 @@ void MainWindow::updateTaskList(const QList<AircraftTask>& tasks)
 
 void MainWindow::showExecutePageAndReload()
 {
-    ui->stackedWidget->setCurrentIndex(0);
+    ui->stkMainPages->setCurrentIndex(0);
     loadExecutableTasks();
 }
 
 void MainWindow::addTaskToTable(const AircraftTask& task, int row)
 {
-    QWidget* checkWidget = new QWidget(ui->tableTask);
+    QWidget* checkWidget = new QWidget(ui->tblTasks);
     QHBoxLayout* checkLayout = new QHBoxLayout(checkWidget);
     checkLayout->setContentsMargins(0, 0, 0, 0);
     checkLayout->setAlignment(Qt::AlignCenter);
@@ -236,7 +240,7 @@ void MainWindow::addTaskToTable(const AircraftTask& task, int row)
     checkBox->setProperty("aircraft_task_id", task.aircraft_task_id);
     checkBox->setCursor(Qt::PointingHandCursor);
     checkLayout->addWidget(checkBox);
-    ui->tableTask->setCellWidget(row, 0, checkWidget);
+    ui->tblTasks->setCellWidget(row, 0, checkWidget);
     connect(checkBox, &QCheckBox::toggled,
             this, [this, checkBox](bool checked) {
                 onTaskCheckChanged(checkBox, checked);
@@ -249,22 +253,15 @@ void MainWindow::addTaskToTable(const AircraftTask& task, int row)
         return item;
     };
 
-    ui->tableTask->setItem(row, 1, makeReadOnlyItem(QString::number(task.aircraft_task_id)));
-    ui->tableTask->setItem(row, 2, makeReadOnlyItem(QString::number(task.batch_id)));
-    ui->tableTask->setItem(row, 3, makeReadOnlyItem(task.aircraft_code));
-
-    QTableWidgetItem *statusItem = makeReadOnlyItem(getStatusText(task.status));
-    statusItem->setForeground(QBrush(getStatusColor(task.status)));
-    statusItem->setFont(QFont("", -1, QFont::Bold));
-    ui->tableTask->setItem(row, 4, statusItem);
-
-    ui->tableTask->setItem(row, 5, makeReadOnlyItem(QString("%1%").arg(task.progress, 0, 'f', 1)));
-    ui->tableTask->setItem(row, 6, makeReadOnlyItem(task.current_phase));
+    ui->tblTasks->setItem(row, 1, makeReadOnlyItem(QString::number(task.aircraft_task_id)));
+    ui->tblTasks->setItem(row, 2, makeReadOnlyItem(QString::number(task.batch_id)));
+    ui->tblTasks->setItem(row, 3, makeReadOnlyItem(task.aircraft_code));
+    ui->tblTasks->setItem(row, 4, makeReadOnlyItem(TaskStatusText::devicePhaseDisplayName(task.current_phase, task.status)));
 }
 
 QCheckBox* MainWindow::taskCheckBoxAt(int row) const
 {
-    QWidget* cellWidget = ui->tableTask->cellWidget(row, 0);
+    QWidget* cellWidget = ui->tblTasks->cellWidget(row, 0);
     return cellWidget ? cellWidget->findChild<QCheckBox*>() : nullptr;
 }
 
@@ -276,8 +273,8 @@ void MainWindow::onTaskCheckChanged(QCheckBox* source, bool checked)
 
     const int taskId = source->property("aircraft_task_id").toInt();
     if (checked) {
-        const QSignalBlocker tableBlocker(ui->tableTask);
-        for (int row = 0; row < ui->tableTask->rowCount(); ++row) {
+        const QSignalBlocker tableBlocker(ui->tblTasks);
+        for (int row = 0; row < ui->tblTasks->rowCount(); ++row) {
             QCheckBox* box = taskCheckBoxAt(row);
             if (box && box != source) {
                 const QSignalBlocker boxBlocker(box);
@@ -295,34 +292,29 @@ void MainWindow::onTaskCheckChanged(QCheckBox* source, bool checked)
                   {{"checked", checked}});
 }
 
-QString MainWindow::getStatusText(DeviceTaskStatus status)
-{
-    return TaskStatusText::deviceDisplayName(status);
-}
-
-QColor MainWindow::getStatusColor(DeviceTaskStatus status)
-{
-    switch (status) {
-    case DeviceTaskStatus::Waiting: return QColor(255, 165, 0);
-    case DeviceTaskStatus::Downloading: return QColor(0, 120, 215);
-    case DeviceTaskStatus::Transferring: return QColor(0, 120, 215);
-    case DeviceTaskStatus::Installing: return QColor(128, 90, 213);
-    case DeviceTaskStatus::Verifying: return QColor(0, 150, 160);
-    case DeviceTaskStatus::Success: return QColor(0, 150, 0);
-    case DeviceTaskStatus::Failed: return QColor(220, 20, 60);
-    default: return Qt::black;
-    }
-}
-
 QString MainWindow::selectedAircraftTaskId() const
 {
-    for (int row = 0; row < ui->tableTask->rowCount(); ++row) {
+    for (int row = 0; row < ui->tblTasks->rowCount(); ++row) {
         QCheckBox* box = taskCheckBoxAt(row);
         if (box && box->isChecked()) {
             return QString::number(box->property("aircraft_task_id").toInt());
         }
     }
     return QString();
+}
+
+void MainWindow::setNetworkConnectionStatus(bool connected)
+{
+    ui->lblNetworkConnection->setText(connected
+        ? "网络连接状态：已连接CentralServer"
+        : "网络连接状态：未连接CentralServer");
+}
+
+void MainWindow::setAircraftConnectionStatus(bool connected)
+{
+    ui->lblDeviceConnection->setText(connected
+        ? "飞机连接状态：已连接AC-1001"
+        : "飞机连接状态：未连接AC-1001");
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
@@ -350,12 +342,12 @@ void MainWindow::on_btnExecute_clicked()
 
 void MainWindow::on_btnObtain_clicked()
 {
-    ui->stackedWidget->setCurrentIndex(1);
+    ui->stkMainPages->setCurrentIndex(1);
 }
 
 void MainWindow::on_btnLogs_clicked()
 {
-    ui->stackedWidget->setCurrentIndex(2);
+    ui->stkMainPages->setCurrentIndex(2);
 }
 
 void MainWindow::startSelectedAircraftTask()
@@ -382,11 +374,6 @@ void MainWindow::startSelectedAircraftTask()
     showTaskProgressControls();
     statusBar()->showMessage(QString("已启动飞机升级任务: %1").arg(taskId), 5000);
     loadExecutableTasks();
-}
-
-void MainWindow::on_btnConnectToDevices_clicked()
-{
-    emit openDeviceConnector();
 }
 
 void MainWindow::on_btnLogout_clicked()

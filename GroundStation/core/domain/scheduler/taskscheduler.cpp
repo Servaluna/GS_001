@@ -13,6 +13,10 @@
 #include <QDir>
 #include <QFileInfo>
 
+#ifndef GROUNDSTATION_PROJECT_DIR
+#define GROUNDSTATION_PROJECT_DIR ""
+#endif
+
 constexpr int PROCESS_INTERVAL_MS = 500;
 constexpr int SPEED_UPDATE_INTERVAL_MS = 1000;
 
@@ -31,6 +35,17 @@ LogContext deviceContext(const AircraftTask& aircraftTask, const DeviceTask& dev
     LogContext context = aircraftContext(aircraftTask);
     context.device_task_id = deviceTask.device_task_id;
     return context;
+}
+
+QString downloadCachePath(int aircraftTaskId, const QString& fileCode)
+{
+    const QString projectDir = QString::fromUtf8(GROUNDSTATION_PROJECT_DIR);
+    const QString baseDir = !projectDir.isEmpty() && QFileInfo::exists(QDir(projectDir).filePath("GroundStation.pro"))
+        ? projectDir
+        : QDir::currentPath();
+
+    return QDir::cleanPath(QDir(baseDir).filePath(
+        QString("data/cache/files/%1/%2.bin").arg(aircraftTaskId).arg(fileCode)));
 }
 
 }
@@ -217,19 +232,31 @@ bool TaskScheduler::cancelTask(const QString& aircraftTaskId)
             m_downloadManager->cancelDownload(m_currentDownloadUuid);
         }
 
-        m_stateMachine->updateAircraftStatus(id, DeviceTaskStatus::Failed, m_currentAircraftTask.progress, "用户取消");
-        reportTaskStatus(DeviceTaskStatus::Failed, m_currentAircraftTask.progress, "用户取消", nullptr, DeviceTaskStatus::Failed, 0.0, "用户取消");
+        m_stateMachine->updateAircraftStatus(id, DeviceTaskStatus::Failed, m_currentAircraftTask.progress);
+        reportTaskStatus(DeviceTaskStatus::Failed,
+                         m_currentAircraftTask.progress,
+                         TaskStatusText::devicePhase(DeviceTaskStatus::Failed),
+                         nullptr,
+                         DeviceTaskStatus::Failed,
+                         0.0,
+                         "用户取消");
         clearCurrentTask();
         emit taskFinished(aircraftTaskId, false, "任务已取消");
     } else {
         for (int i = 0; i < m_taskQueue.size(); ++i) {
             if (m_taskQueue[i] == id) {
                 m_taskQueue.removeAt(i);
-                m_stateMachine->updateAircraftStatus(id, DeviceTaskStatus::Failed, 0.0, "用户取消");
+                m_stateMachine->updateAircraftStatus(id, DeviceTaskStatus::Failed, 0.0);
                 const AircraftTask queuedTask = m_repository->getAircraftTask(id);
                 if (queuedTask.isValid()) {
                     m_currentAircraftTask = queuedTask;
-                    reportTaskStatus(DeviceTaskStatus::Failed, 0.0, "用户取消", nullptr, DeviceTaskStatus::Failed, 0.0, "用户取消");
+                    reportTaskStatus(DeviceTaskStatus::Failed,
+                                     0.0,
+                                     TaskStatusText::devicePhase(DeviceTaskStatus::Failed),
+                                     nullptr,
+                                     DeviceTaskStatus::Failed,
+                                     0.0,
+                                     "用户取消");
                     m_currentAircraftTask = AircraftTask();
                 }
                 Logger::warn("TASK_CANCELLED", QString("取消队列中的飞机任务 %1").arg(aircraftTaskId), {{"aircraft_task_id", aircraftTaskId}});
@@ -285,15 +312,15 @@ void TaskScheduler::onDownloadProgress(QString taskUuid, qint64 transferred, qin
     const int aircraftProgress = m_repository->calculateAircraftProgress(m_currentAircraftTask.aircraft_task_id);
     m_stateMachine->updateAircraftStatus(m_currentAircraftTask.aircraft_task_id,
                                          DeviceTaskStatus::Downloading,
-                                         aircraftProgress,
-                                         QString("下载设备 %1").arg(m_currentDeviceTask.device_code));
+                                         aircraftProgress);
     if (progressPercent == 0 || progressPercent == 100 || progressPercent % 25 == 0) {
         reportTaskStatus(DeviceTaskStatus::Downloading,
                          aircraftProgress,
-                         QString("下载设备 %1").arg(m_currentDeviceTask.device_code),
+                         TaskStatusText::devicePhase(DeviceTaskStatus::Downloading),
                          &m_currentDeviceTask,
                          DeviceTaskStatus::Downloading,
-                         progressPercent);
+                         progressPercent,
+                         QString("下载设备 %1").arg(m_currentDeviceTask.device_code));
     }
     emit taskProgressUpdated(aircraftTaskKey(), "下载中", progressPercent, m_currentSpeed);
 }
@@ -347,7 +374,7 @@ void TaskScheduler::onDownloadFailed(QString taskUuid, int errorCode, const QStr
                                        QString("下载失败(重试%1次): %2").arg(MAX_RETRY_COUNT).arg(errorMessage));
     reportTaskStatus(DeviceTaskStatus::Failed,
                      m_currentAircraftTask.progress,
-                     "下载失败",
+                     TaskStatusText::devicePhase(DeviceTaskStatus::Failed),
                      &m_currentDeviceTask,
                      DeviceTaskStatus::Failed,
                      m_currentDeviceTask.progress,
@@ -371,10 +398,11 @@ void TaskScheduler::onTransferProgress(QString taskId, qint64 sent, qint64 total
     if (percent == 0 || percent == 100 || percent % 25 == 0) {
         reportTaskStatus(DeviceTaskStatus::Transferring,
                          m_repository->calculateAircraftProgress(m_currentAircraftTask.aircraft_task_id),
-                         QString("传输设备 %1").arg(m_currentDeviceTask.device_code),
+                         TaskStatusText::devicePhase(DeviceTaskStatus::Transferring),
                          &m_currentDeviceTask,
                          DeviceTaskStatus::Transferring,
-                         deviceProgress);
+                         deviceProgress,
+                         QString("传输设备 %1").arg(m_currentDeviceTask.device_code));
     }
     emit taskProgressUpdated(aircraftTaskKey(), "发送中", static_cast<int>(deviceProgress));
 }
@@ -401,7 +429,7 @@ void TaskScheduler::onDeviceSendFinished(QString taskId, bool success, const QSt
                                            QString("发送到设备失败: %1").arg(message));
         reportTaskStatus(DeviceTaskStatus::Failed,
                          m_currentAircraftTask.progress,
-                         "传输失败",
+                         TaskStatusText::devicePhase(DeviceTaskStatus::Failed),
                          &m_currentDeviceTask,
                          DeviceTaskStatus::Failed,
                          m_currentDeviceTask.progress,
@@ -423,14 +451,14 @@ void TaskScheduler::onDeviceSendFinished(QString taskId, bool success, const QSt
     m_stateMachine->updateDeviceStatus(m_currentDeviceTask.device_task_id, DeviceTaskStatus::Installing, 90.0);
     m_stateMachine->updateAircraftStatus(m_currentAircraftTask.aircraft_task_id,
                                          DeviceTaskStatus::Installing,
-                                         m_repository->calculateAircraftProgress(m_currentAircraftTask.aircraft_task_id),
-                                         QString("安装设备 %1").arg(m_currentDeviceTask.device_code));
+                                         m_repository->calculateAircraftProgress(m_currentAircraftTask.aircraft_task_id));
     reportTaskStatus(DeviceTaskStatus::Installing,
                      m_repository->calculateAircraftProgress(m_currentAircraftTask.aircraft_task_id),
-                     QString("安装设备 %1").arg(m_currentDeviceTask.device_code),
+                     TaskStatusText::devicePhase(DeviceTaskStatus::Installing),
                      &m_currentDeviceTask,
                      DeviceTaskStatus::Installing,
-                     90.0);
+                     90.0,
+                     QString("安装设备 %1").arg(m_currentDeviceTask.device_code));
     emit taskProgressUpdated(aircraftTaskKey(), "安装中", 90);
 }
 
@@ -456,7 +484,7 @@ void TaskScheduler::onDeviceInstallResult(QString taskId, bool success, const QS
                                            QString("设备安装失败: %1").arg(message));
         reportTaskStatus(DeviceTaskStatus::Failed,
                          m_currentAircraftTask.progress,
-                         "安装失败",
+                         TaskStatusText::devicePhase(DeviceTaskStatus::Failed),
                          &m_currentDeviceTask,
                          DeviceTaskStatus::Failed,
                          90.0,
@@ -475,10 +503,11 @@ void TaskScheduler::onDeviceInstallResult(QString taskId, bool success, const QS
     m_stateMachine->updateDeviceStatus(m_currentDeviceTask.device_task_id, DeviceTaskStatus::Success, 100.0);
     reportTaskStatus(DeviceTaskStatus::Verifying,
                      m_repository->calculateAircraftProgress(m_currentAircraftTask.aircraft_task_id),
-                     QString("校验设备 %1").arg(m_currentDeviceTask.device_code),
+                     TaskStatusText::devicePhase(DeviceTaskStatus::Verifying),
                      &m_currentDeviceTask,
                      DeviceTaskStatus::Success,
-                     100.0);
+                     100.0,
+                     QString("校验设备 %1").arg(m_currentDeviceTask.device_code));
     ++m_currentDeviceIndex;
     processNextDeviceTask();
 }
@@ -519,8 +548,14 @@ void TaskScheduler::processNextTask()
     m_currentDeviceIndex = 0;
     m_retryCount = 0;
 
-    m_stateMachine->updateAircraftStatus(aircraftTaskId, DeviceTaskStatus::Downloading, 0.0, "执行中");
-    reportTaskStatus(DeviceTaskStatus::Downloading, 0.0, "执行中");
+    m_stateMachine->updateAircraftStatus(aircraftTaskId, DeviceTaskStatus::Downloading, 0.0);
+    reportTaskStatus(DeviceTaskStatus::Downloading,
+                     0.0,
+                     TaskStatusText::devicePhase(DeviceTaskStatus::Downloading),
+                     nullptr,
+                     DeviceTaskStatus::Downloading,
+                     0.0,
+                     "执行中");
     Logger::info("TASK_STARTED",
                  QString("开始执行飞机任务 %1").arg(aircraftTaskId),
                  aircraftContext(m_currentAircraftTask),
@@ -567,10 +602,11 @@ void TaskScheduler::startDownloadTask(const DeviceTask& deviceTask)
     m_stateMachine->updateDeviceStatus(deviceTask.device_task_id, DeviceTaskStatus::Downloading, 0.0);
     reportTaskStatus(DeviceTaskStatus::Downloading,
                      m_repository->calculateAircraftProgress(m_currentAircraftTask.aircraft_task_id),
-                     QString("下载设备 %1").arg(deviceTask.device_code),
+                     TaskStatusText::devicePhase(DeviceTaskStatus::Downloading),
                      &deviceTask,
                      DeviceTaskStatus::Downloading,
-                     0.0);
+                     0.0,
+                     QString("下载设备 %1").arg(deviceTask.device_code));
     emit taskProgressUpdated(aircraftTaskKey(), "下载中", 0);
 
     m_lastTransferredBytes = downloadTask.downloaded_size;
@@ -592,10 +628,11 @@ void TaskScheduler::startSendToDevice(const QString& localPath)
     m_stateMachine->updateDeviceStatus(m_currentDeviceTask.device_task_id, DeviceTaskStatus::Transferring, 80.0);
     reportTaskStatus(DeviceTaskStatus::Transferring,
                      m_repository->calculateAircraftProgress(m_currentAircraftTask.aircraft_task_id),
-                     QString("传输设备 %1").arg(m_currentDeviceTask.device_code),
+                     TaskStatusText::devicePhase(DeviceTaskStatus::Transferring),
                      &m_currentDeviceTask,
                      DeviceTaskStatus::Transferring,
-                     80.0);
+                     80.0,
+                     QString("传输设备 %1").arg(m_currentDeviceTask.device_code));
     emit taskProgressUpdated(aircraftTaskKey(), "发送中", 80);
 
     const QString fileName = QFileInfo(localPath).fileName();
@@ -644,7 +681,7 @@ void TaskScheduler::completeCurrentAircraftTask(bool success, const QString& mes
     m_stateMachine->markAircraftComplete(m_currentAircraftTask.aircraft_task_id, success, message);
     reportTaskStatus(success ? DeviceTaskStatus::Success : DeviceTaskStatus::Failed,
                      success ? 100.0 : m_currentAircraftTask.progress,
-                     success ? "执行完成" : message,
+                     TaskStatusText::devicePhase(success ? DeviceTaskStatus::Success : DeviceTaskStatus::Failed),
                      nullptr,
                      success ? DeviceTaskStatus::Success : DeviceTaskStatus::Failed,
                      success ? 100.0 : 0.0,
@@ -705,8 +742,7 @@ DownloadTask TaskScheduler::ensureDownloadTask(const DeviceTask& deviceTask)
     task.task_uuid = QString::number(deviceTask.device_task_id);
     task.device_task_id = deviceTask.device_task_id;
     task.file_code = deviceTask.file_code;
-    task.local_path = QDir::currentPath()
-        + QString("/cache/files/%1/%2.bin").arg(m_currentAircraftTask.aircraft_task_id).arg(deviceTask.file_code);
+    task.local_path = downloadCachePath(m_currentAircraftTask.aircraft_task_id, deviceTask.file_code);
     task.temp_path = task.local_path + ".part";
     task.downloaded_size = deviceTask.downloaded_size;
     task.total_size = deviceTask.total_size;
