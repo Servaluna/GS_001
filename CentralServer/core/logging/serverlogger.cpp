@@ -3,11 +3,17 @@
 #include "../database/databasemanager.h"
 
 #include <QDebug>
+#include <QDir>
 #include <QHostInfo>
 #include <QJsonDocument>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QTextStream>
+
+#ifndef CENTRALSERVER_PROJECT_DIR
+#define CENTRALSERVER_PROJECT_DIR ""
+#endif
 
 namespace {
 
@@ -24,6 +30,15 @@ QString localMachineId()
 {
     const QString hostName = QHostInfo::localHostName();
     return hostName.isEmpty() ? QStringLiteral("CENTRAL-SERVER") : hostName;
+}
+
+QString centralServerProjectDir()
+{
+    const QString projectDir = QString::fromUtf8(CENTRALSERVER_PROJECT_DIR);
+    if (!projectDir.isEmpty()) {
+        return QDir::cleanPath(projectDir);
+    }
+    return QDir::currentPath();
 }
 
 QVariant nullableInt(int value)
@@ -126,6 +141,7 @@ void ServerLogger::log(const ServerLogEntry& entry)
 {
     const ServerLogEntry normalized = withDefaults(entry);
     writeToQtLog(normalized);
+    writeToFileLog(normalized);
     writeToDatabase(normalized);
     emit logGenerated(normalized);
 }
@@ -192,16 +208,7 @@ ServerLogEntry ServerLogger::withDefaults(const ServerLogEntry& entry) const
 
 void ServerLogger::writeToQtLog(const ServerLogEntry& entry) const
 {
-    const QString detail = QString::fromUtf8(
-        QJsonDocument(entry.event_detail).toJson(QJsonDocument::Compact)
-    );
-    const QString line = QString("[%1][%2][user:%3][session:%4] %5 %6")
-        .arg(entry.event_level,
-             entry.event_type,
-             entry.operator_user_id > 0 ? QString::number(entry.operator_user_id) : QStringLiteral("-"),
-             entry.session_id.isEmpty() ? QStringLiteral("-") : entry.session_id,
-             entry.event_message,
-             detail);
+    const QString line = formatLogLine(entry);
 
     if (entry.event_level == "ERROR") {
         qCritical().noquote() << line;
@@ -212,6 +219,34 @@ void ServerLogger::writeToQtLog(const ServerLogEntry& entry) const
     } else {
         qInfo().noquote() << line;
     }
+}
+
+void ServerLogger::writeToFileLog(const ServerLogEntry& entry)
+{
+    const QString logFilePath = currentLogFilePath();
+    if (logFilePath.isEmpty()) {
+        return;
+    }
+
+    if (m_logFilePath != logFilePath) {
+        if (m_logFile.isOpen()) {
+            m_logFile.close();
+        }
+        m_logFile.setFileName(logFilePath);
+        m_logFilePath = logFilePath;
+    }
+
+    if (!m_logFile.isOpen() && !m_logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        return;
+    }
+
+    QTextStream stream(&m_logFile);
+    stream.setEncoding(QStringConverter::Utf8);
+    stream << entry.created_at.toString("yyyy-MM-dd hh:mm:ss.zzz")
+           << ' '
+           << formatLogLine(entry)
+           << '\n';
+    stream.flush();
 }
 
 void ServerLogger::writeToDatabase(const ServerLogEntry& entry)
@@ -267,4 +302,36 @@ void ServerLogger::writeToDatabase(const ServerLogEntry& entry)
     }
 
     m_writingDatabase = false;
+}
+
+QString ServerLogger::logDirectoryPath() const
+{
+    return QDir::cleanPath(QDir(centralServerProjectDir()).filePath("data/logs"));
+}
+
+QString ServerLogger::currentLogFilePath() const
+{
+    const QString dirPath = logDirectoryPath();
+    QDir dir;
+    if (!dir.exists(dirPath) && !dir.mkpath(dirPath)) {
+        return QString();
+    }
+
+    const QString fileName = QString("centralserver_%1.log")
+        .arg(QDate::currentDate().toString("yyyyMMdd"));
+    return QDir(dirPath).filePath(fileName);
+}
+
+QString ServerLogger::formatLogLine(const ServerLogEntry& entry) const
+{
+    const QString detail = QString::fromUtf8(
+        QJsonDocument(entry.event_detail).toJson(QJsonDocument::Compact)
+    );
+    return QString("[%1][%2][user:%3][session:%4] %5 %6")
+        .arg(entry.event_level,
+             entry.event_type,
+             entry.operator_user_id > 0 ? QString::number(entry.operator_user_id) : QStringLiteral("-"),
+             entry.session_id.isEmpty() ? QStringLiteral("-") : entry.session_id,
+             entry.event_message,
+             detail);
 }

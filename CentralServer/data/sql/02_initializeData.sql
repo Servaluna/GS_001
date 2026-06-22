@@ -56,11 +56,11 @@ INSERT INTO devices (device_code, device_name, device_type, aircraft_id, hardwar
 SET @uploader_id = (SELECT user_id FROM users WHERE username = '工程师1' LIMIT 1);
 
 INSERT INTO files (file_code, file_name, file_type, file_size, sha256_hash, storage_path, version, description, uploader_user_id) VALUES
-('FILE-FW-001', 'mission_computer_firmware_v1.2.0.bin', 1, 15728640, '5d41402abc4b2a76b9719d911017c5925d41402abc4b2a76b9719d911017c592', '/storage/firmware/mission_computer_v1.2.0.bin', 'v1.2.0', '任务计算机固件升级包', @uploader_id),
-('FILE-FW-002', 'flight_controller_firmware_v2.0.1.bin', 1, 8388608, '7d793037a0760186574b0282f2f435e77d793037a0760186574b0282f2f435e7', '/storage/firmware/fc_v2.0.1.bin', 'v2.0.1', '飞控系统固件升级包', @uploader_id),
-('FILE-FW-003', 'data_link_firmware_v1.0.0.bin', 1, 2097152, '098f6bcd4621d373cade4e832627b4f6098f6bcd4621d373cade4e832627b4f6', '/storage/firmware/datalink_v1.0.0.bin', 'v1.0.0', '数传模块固件升级包', @uploader_id),
-('FILE-SW-001', 'mission_computer_software_v1.0.5.zip', 2, 5242880, '8f14e45fceea167a5a36dedd4bea25438f14e45fceea167a5a36dedd4bea2543', '/storage/software/mission_software_v1.0.5.zip', 'v1.0.5', '任务计算机软件升级包', @uploader_id),
-('FILE-FW-004', 'flight_controller_firmware_v2.1.0.bin', 1, 9437184, 'eccbc87e4b5ce2fe28308fd9f2a7baf3eccbc87e4b5ce2fe28308fd9f2a7baf3', '/storage/firmware/fc_v2.1.0.bin', 'v2.1.0', '飞控系统最新固件', @uploader_id),
-('FILE-FW-005', 'gps_firmware_v1.1.0.bin', 1, 1048576, 'a87ff679a2f3e71d9181a67b7542122ca87ff679a2f3e71d9181a67b7542122c', '/storage/firmware/gps_v1.1.0.bin', 'v1.1.0', 'GPS传感器固件升级', @uploader_id),
-('FILE-FW-006', 'camera_firmware_v1.2.0.bin', 1, 5242880, 'e4da3b7fbbce2345d7772b0674a318d5e4da3b7fbbce2345d7772b0674a318d5', '/storage/firmware/camera_v1.2.0.bin', 'v1.2.0', '相机载荷固件升级', @uploader_id),
-('FILE-SW-002', 'lidar_software_v1.0.4.zip', 2, 8388608, '1679091c5a880faf6fb5e6087eb1b2dc1679091c5a880faf6fb5e6087eb1b2dc', '/storage/software/lidar_v1.0.4.zip', 'v1.0.4', '激光雷达软件升级', @uploader_id);
+('FILE-FW-001', 'FILE-FW-001_mission_computer_firmware_v1.2.0.bin', 1, 15728640, '5d41402abc4b2a76b9719d911017c5925d41402abc4b2a76b9719d911017c592', 'data/storage/FW/FILE-FW-001_mission_computer_firmware_v1.2.0.bin', 'v1.2.0', '任务计算机固件升级包', @uploader_id),
+('FILE-FW-002', 'FILE-FW-002_flight_controller_firmware_v2.0.1.bin', 1, 8388608, '7d793037a0760186574b0282f2f435e77d793037a0760186574b0282f2f435e7', 'data/storage/FW/FILE-FW-002_flight_controller_firmware_v2.0.1.bin', 'v2.0.1', '飞控系统固件升级包', @uploader_id),
+('FILE-FW-003', 'FILE-FW-003_data_link_firmware_v1.0.0.bin', 1, 2097152, '098f6bcd4621d373cade4e832627b4f6098f6bcd4621d373cade4e832627b4f6', 'data/storage/FW/FILE-FW-003_data_link_firmware_v1.0.0.bin', 'v1.0.0', '数传模块固件升级包', @uploader_id),
+('FILE-SW-001', 'FILE-SW-001_mission_computer_software_v1.0.5.zip', 2, 5242880, '8f14e45fceea167a5a36dedd4bea25438f14e45fceea167a5a36dedd4bea2543', 'data/storage/SW/FILE-SW-001_mission_computer_software_v1.0.5.zip', 'v1.0.5', '任务计算机软件升级包', @uploader_id),
+('FILE-FW-004', 'FILE-FW-004_flight_controller_firmware_v2.1.0.bin', 1, 9437184, 'eccbc87e4b5ce2fe28308fd9f2a7baf3eccbc87e4b5ce2fe28308fd9f2a7baf3', 'data/storage/FW/FILE-FW-004_flight_controller_firmware_v2.1.0.bin', 'v2.1.0', '飞控系统最新固件', @uploader_id),
+('FILE-FW-005', 'FILE-FW-005_gps_firmware_v1.1.0.bin', 1, 1048576, 'a87ff679a2f3e71d9181a67b7542122ca87ff679a2f3e71d9181a67b7542122c', 'data/storage/FW/FILE-FW-005_gps_firmware_v1.1.0.bin', 'v1.1.0', 'GPS传感器固件升级', @uploader_id),
+('FILE-FW-006', 'FILE-FW-006_camera_firmware_v1.2.0.bin', 1, 5242880, 'e4da3b7fbbce2345d7772b0674a318d5e4da3b7fbbce2345d7772b0674a318d5', 'data/storage/FW/FILE-FW-006_camera_firmware_v1.2.0.bin', 'v1.2.0', '相机载荷固件升级', @uploader_id),
+('FILE-SW-002', 'FILE-SW-002_lidar_software_v1.0.4.zip', 2, 8388608, '1679091c5a880faf6fb5e6087eb1b2dc1679091c5a880faf6fb5e6087eb1b2dc', 'data/storage/SW/FILE-SW-002_lidar_software_v1.0.4.zip', 'v1.0.4', '激光雷达软件升级', @uploader_id);

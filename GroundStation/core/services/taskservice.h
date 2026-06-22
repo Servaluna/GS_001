@@ -28,6 +28,7 @@ public:
 
     bool syncTasksForUser(int userId, int roleId, int timeoutMs = 3000);
     QList<AircraftTask> getExecutableAircraftTasksForUser(int userId, int roleId);
+    bool clearLocalTaskData();
 
     bool startTask(const QString& aircraftTaskId);
     bool pauseTask(const QString& aircraftTaskId);

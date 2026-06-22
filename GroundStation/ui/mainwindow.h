@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include "models.h"
+#include "../core/logging/logger.h"
 #include "../core/models/aircrafttask.h"
 
 #include <QCloseEvent>
@@ -10,6 +11,7 @@
 #include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
+#include <QTableWidget>
 #include <QTableWidgetItem>
 
 QT_BEGIN_NAMESPACE
@@ -19,6 +21,7 @@ class MainWindow;
 QT_END_NAMESPACE
 
 class TaskService;
+class QLabel;
 class QSpacerItem;
 
 class MainWindow : public QMainWindow
@@ -57,6 +60,8 @@ private:
     void showTaskStartControls();
     void showTaskProgressControls();
     void startSelectedAircraftTask();
+    void initLogsPage();
+    void appendLogEntryToTable(const LogEntry& entry);
 
     void initTableTask();
     void addTaskToTable(const AircraftTask& task, int row);
@@ -69,7 +74,10 @@ private:
     QString m_token;
     UserInfo m_userInfo;
     QPointer<TaskService> m_taskService;
+    bool m_aircraftConnected = false;
     QPointer<QPushButton> m_btnStartAircraftTask;
+    QPointer<QTableWidget> m_tblLogs;
+    QPointer<QLabel> m_lblLogSummary;
     QSpacerItem* m_taskStartSpacer = nullptr;
 };
 

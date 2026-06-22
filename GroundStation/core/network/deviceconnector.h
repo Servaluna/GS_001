@@ -105,6 +105,8 @@ private:
     static constexpr int SEND_BUFFER_SIZE = 64 * 1024;
     static constexpr int SEND_INTERVAL_MS = 10;
     static constexpr quint16 PACKET_START_MARK = 0x5A5A;
+    // Fixed packet overhead: 2-byte start mark + 1-byte command
+    // + 4-byte payload size + 2-byte checksum.
     static constexpr int PACKET_HEADER_SIZE = 9;
     static constexpr quint16 DEFAULT_LISTEN_PORT = 9001;
 };

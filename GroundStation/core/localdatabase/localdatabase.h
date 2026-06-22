@@ -24,6 +24,7 @@ public:
     bool beginTransaction();
     bool commitTransaction();
     bool rollbackTransaction();
+    bool clearBusinessData();
 
     bool isInitialized() const { return m_isInitialized; }
     QString lastError() const { return m_lastError; }

@@ -42,10 +42,11 @@ private:
         QString taskId;
         QString targetDeviceId;
         QString fileName;
+        QString tempPath;
+        QString localPath;
         qint64 expectedSize = 0;
         qint64 receivedSize = 0;
         QString expectedSha256;
-        QByteArray data;
     };
 
     bool sendCommand(Command cmd, const QByteArray& payload = QByteArray());
@@ -55,6 +56,13 @@ private:
     void sendDeviceStatusFull();
     void sendFileReceiveResult(bool success, const QString& message);
     void sendInstallResult(bool success, const QString& message);
+    void sendInstallResultForTask(const QString& taskId,
+                                  const QString& targetDeviceId,
+                                  bool success,
+                                  const QString& message);
+    QString receiveDirectory() const;
+    QString buildLocalPackagePath(const QString& taskId, const QString& targetDeviceId, const QString& fileName) const;
+    bool verifyPackageFile(const QString& filePath, qint64 expectedSize, const QString& expectedSha256) const;
     void handleFileStart(const QByteArray& payload);
     void handleFileData(const QByteArray& payload);
     void handleFileEnd();
@@ -67,6 +75,8 @@ private:
     TransferContext m_transfer;
 
     static constexpr quint16 PACKET_START_MARK = 0x5A5A;
+    // Fixed packet overhead: 2-byte start mark + 1-byte command
+    // + 4-byte payload size + 2-byte checksum.
     static constexpr int PACKET_HEADER_SIZE = 9;
 };
 

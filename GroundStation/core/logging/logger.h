@@ -2,7 +2,9 @@
 #define LOGGER_H
 
 #include <QDateTime>
+#include <QFile>
 #include <QJsonObject>
+#include <QList>
 #include <QObject>
 #include <QString>
 
@@ -80,6 +82,7 @@ public:
     void setClientMachineId(const QString& machineId);
     void setSessionId(const QString& sessionId);
     void setIpAddress(const QString& ipAddress);
+    QList<LogEntry> recentEntries() const;
 
     void log(const LogEntry& entry);
     void log(const QString& eventType,
@@ -100,11 +103,19 @@ private:
 
     LogEntry withDefaults(const LogEntry& entry) const;
     void writeToQtLog(const LogEntry& entry) const;
+    void writeToFileLog(const LogEntry& entry);
+    QString logDirectoryPath() const;
+    QString currentLogFilePath() const;
+    QString formatLogLine(const LogEntry& entry) const;
 
     int m_operatorUserId;
     QString m_clientMachineId;
     QString m_sessionId;
     QString m_ipAddress;
+    mutable QFile m_logFile;
+    mutable QString m_logFilePath;
+    QList<LogEntry> m_recentEntries;
+    static constexpr int MAX_RECENT_ENTRY_COUNT = 2000;
 };
 
 #endif // LOGGER_H

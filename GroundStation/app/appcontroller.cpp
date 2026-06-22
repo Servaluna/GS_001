@@ -200,6 +200,10 @@ void AppController::onLogoutRequested()
         m_deviceConnector->stopListening();
     }
     ServerConnector::instance().logoutRequest();
+    if (m_taskService && !m_taskService->clearLocalTaskData()) {
+        Logger::warn("TASK_LOCAL_CLEAR_FAILED_AFTER_LOGOUT",
+                     "退出登录后清空本地任务数据失败");
+    }
     Logger::instance().setOperatorUserId(-1);
     Logger::instance().setSessionId(QString());
     closeMainPage();

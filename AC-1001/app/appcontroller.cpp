@@ -1,6 +1,7 @@
 #include "appcontroller.h"
 
 #include "../core/domain/aircraftsimulator.h"
+#include "../core/logging/aircraftlogger.h"
 #include "../core/network/aircraftclient.h"
 #include "../ui/mainwindow.h"
 
@@ -18,6 +19,8 @@ AppController::AppController(QObject *parent)
 
 int AppController::start()
 {
+    AircraftLogger::info("AC-1001 启动");
+
     m_mainWindow = new MainWindow();
     connect(m_mainWindow, &QObject::destroyed, this, [this]() {
         m_mainWindow = nullptr;
@@ -37,9 +40,11 @@ int AppController::start()
 void AppController::onToggleGroundStationConnectionRequested()
 {
     if (m_client->isConnected()) {
+        AircraftLogger::info("用户请求断开 GroundStation 连接");
         m_client->disconnectFromGroundStation();
         return;
     }
 
+    AircraftLogger::info("用户请求连接 GroundStation");
     m_client->connectToGroundStation(GROUND_STATION_HOST, GROUND_STATION_PORT);
 }

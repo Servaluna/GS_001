@@ -6,10 +6,26 @@
 
 #include <QHeaderView>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QSizePolicy>
 #include <QSignalBlocker>
 #include <QStatusBar>
+#include <QTableWidget>
 #include <QVBoxLayout>
+
+namespace {
+
+QString roleDisplayName(int roleId, const QString& fallbackRole)
+{
+    const UserRole::Role role = UserRole::roleFromId(roleId);
+    if (role != UserRole::Unknown) {
+        return UserRole::roleToString(role);
+    }
+
+    return fallbackRole.isEmpty() ? QStringLiteral("Unknown") : fallbackRole;
+}
+
+}
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -37,6 +53,10 @@ MainWindow::~MainWindow()
 
 void MainWindow::initUI()
 {
+    const QString roleName = roleDisplayName(m_userInfo.role_id, m_userInfo.role);
+    ui->lblUsername->setText(QString("用户名：%1").arg(m_userInfo.username));
+    ui->lblRole->setText(QString("身份：%1").arg(roleName));
+
     QString title = QString("地面站系统 - [%1]").arg(m_userInfo.role);
     setWindowTitle(title);
 
@@ -52,6 +72,7 @@ void MainWindow::initUI()
 
     initButtonsByRole();
     initTableTask();
+    initLogsPage();
     showTaskStartControls();
 
     ui->stkMainPages->setCurrentIndex(0);
@@ -60,6 +81,13 @@ void MainWindow::initUI()
             this, &MainWindow::on_btnAlwaysOnTop_toggled);
     connect(m_btnStartAircraftTask, &QPushButton::clicked,
             this, &MainWindow::startSelectedAircraftTask);
+    connect(&Logger::instance(), &Logger::logGenerated,
+            this, &MainWindow::appendLogEntryToTable);
+
+    const QList<LogEntry> existingLogs = Logger::instance().recentEntries();
+    for (const LogEntry& entry : existingLogs) {
+        appendLogEntryToTable(entry);
+    }
 
     loadExecutableTasks();
 }
@@ -79,15 +107,18 @@ void MainWindow::on_btnAlwaysOnTop_toggled(bool checked)
 
 void MainWindow::initButtonsByRole()
 {
+    ui->btnObtain->setVisible(false);
+    ui->btnCreateBatch->setVisible(false);
+
     switch (UserRole::roleFromId(m_userInfo.role_id)) {
     case UserRole::Admin:
         ui->btnExecute->setVisible(true);
-        ui->btnObtain->setVisible(true);
+        ui->btnObtain->setVisible(false);
         ui->btnLogs->setVisible(true);
         break;
     case UserRole::Engineer:
         ui->btnExecute->setVisible(true);
-        ui->btnObtain->setVisible(true);
+        ui->btnObtain->setVisible(false);
         ui->btnLogs->setVisible(false);
         break;
     case UserRole::Operator:
@@ -211,6 +242,72 @@ void MainWindow::initTableTask()
     );
 }
 
+void MainWindow::initLogsPage()
+{
+    auto* logsLayout = new QVBoxLayout(ui->widget_3);
+    logsLayout->setContentsMargins(16, 16, 16, 16);
+    logsLayout->setSpacing(12);
+
+    auto* titleLabel = new QLabel(QStringLiteral("GS运行日志"), ui->widget_3);
+    titleLabel->setStyleSheet("font-size: 18px; font-weight: 600;");
+    logsLayout->addWidget(titleLabel);
+
+    m_lblLogSummary = new QLabel(QStringLiteral("显示当前 GroundStation 客户端运行期间产生的日志"), ui->widget_3);
+    m_lblLogSummary->setWordWrap(true);
+    m_lblLogSummary->setStyleSheet("color: #5f6b7a; line-height: 1.4;");
+    logsLayout->addWidget(m_lblLogSummary);
+
+    m_tblLogs = new QTableWidget(ui->widget_3);
+    m_tblLogs->setObjectName("tblLogs");
+    m_tblLogs->setColumnCount(5);
+    m_tblLogs->setHorizontalHeaderLabels(
+        {QStringLiteral("时间"),
+         QStringLiteral("级别"),
+         QStringLiteral("事件"),
+         QStringLiteral("内容"),
+         QStringLiteral("详情")}
+    );
+    m_tblLogs->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_tblLogs->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_tblLogs->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_tblLogs->setAlternatingRowColors(false);
+    m_tblLogs->setShowGrid(false);
+    m_tblLogs->setWordWrap(false);
+    m_tblLogs->setFocusPolicy(Qt::NoFocus);
+    m_tblLogs->verticalHeader()->setVisible(false);
+    m_tblLogs->verticalHeader()->setDefaultSectionSize(34);
+    m_tblLogs->horizontalHeader()->setDefaultAlignment(Qt::AlignCenter);
+    m_tblLogs->horizontalHeader()->setHighlightSections(false);
+    m_tblLogs->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_tblLogs->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    m_tblLogs->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    m_tblLogs->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+    m_tblLogs->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+    m_tblLogs->setStyleSheet(
+        "QTableWidget {"
+        "border: 1px solid #d7dce2;"
+        "background: #ffffff;"
+        "}"
+        "QHeaderView::section {"
+        "background: #f4f6f8;"
+        "border: none;"
+        "border-bottom: 1px solid #d7dce2;"
+        "padding: 6px 8px;"
+        "font-weight: 600;"
+        "}"
+        "QTableWidget::item {"
+        "border-bottom: 1px solid #eef1f4;"
+        "padding: 6px 8px;"
+        "}"
+        "QTableWidget::item:selected {"
+        "background: #ffffff;"
+        "color: palette(text);"
+        "}"
+    );
+
+    logsLayout->addWidget(m_tblLogs, 1);
+}
+
 void MainWindow::updateTaskList(const QList<AircraftTask>& tasks)
 {
     Logger::info("TASK_TABLE_RENDER",
@@ -257,6 +354,43 @@ void MainWindow::addTaskToTable(const AircraftTask& task, int row)
     ui->tblTasks->setItem(row, 2, makeReadOnlyItem(QString::number(task.batch_id)));
     ui->tblTasks->setItem(row, 3, makeReadOnlyItem(task.aircraft_code));
     ui->tblTasks->setItem(row, 4, makeReadOnlyItem(TaskStatusText::devicePhaseDisplayName(task.current_phase, task.status)));
+}
+
+void MainWindow::appendLogEntryToTable(const LogEntry& entry)
+{
+    if (!m_tblLogs) {
+        return;
+    }
+
+    const int row = m_tblLogs->rowCount();
+    m_tblLogs->insertRow(row);
+
+    auto makeItem = [](const QString& text, Qt::Alignment alignment = Qt::AlignCenter) {
+        auto* item = new QTableWidgetItem(text);
+        item->setFlags((item->flags() | Qt::ItemIsEnabled | Qt::ItemIsSelectable) & ~Qt::ItemIsEditable);
+        item->setTextAlignment(alignment);
+        item->setToolTip(text);
+        return item;
+    };
+
+    const QString detailText = QString::fromUtf8(
+        QJsonDocument(entry.event_detail).toJson(QJsonDocument::Compact)
+    );
+
+    m_tblLogs->setItem(row, 0, makeItem(entry.created_at.toString("hh:mm:ss.zzz")));
+    m_tblLogs->setItem(row, 1, makeItem(entry.event_level));
+    m_tblLogs->setItem(row, 2, makeItem(entry.event_type));
+    m_tblLogs->setItem(row, 3, makeItem(entry.event_message, Qt::AlignVCenter | Qt::AlignLeft));
+    m_tblLogs->setItem(row, 4, makeItem(detailText, Qt::AlignVCenter | Qt::AlignLeft));
+
+    m_tblLogs->scrollToBottom();
+
+    if (m_lblLogSummary) {
+        m_lblLogSummary->setText(
+            QStringLiteral("显示当前 GroundStation 客户端运行期间产生的日志\n当前共 %1 条")
+                .arg(m_tblLogs->rowCount())
+        );
+    }
 }
 
 QCheckBox* MainWindow::taskCheckBoxAt(int row) const
@@ -312,9 +446,10 @@ void MainWindow::setNetworkConnectionStatus(bool connected)
 
 void MainWindow::setAircraftConnectionStatus(bool connected)
 {
+    m_aircraftConnected = connected;
     ui->lblDeviceConnection->setText(connected
-        ? "飞机连接状态：已连接AC-1001"
-        : "飞机连接状态：未连接AC-1001");
+        ? QStringLiteral("飞机连接状态：已连接AC-1001")
+        : QStringLiteral("飞机连接状态：未连接AC-1001"));
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
@@ -352,9 +487,23 @@ void MainWindow::on_btnLogs_clicked()
 
 void MainWindow::startSelectedAircraftTask()
 {
+    if (!m_aircraftConnected) {
+        LogContext context;
+        context.operator_user_id = m_userInfo.user_id;
+        Logger::warn("TASK_START_REJECTED",
+                     QStringLiteral("未连接飞机，禁止执行升级任务"),
+                     context);
+        QMessageBox::warning(this,
+                             QStringLiteral("执行任务"),
+                             QStringLiteral("当前未连接任何飞机，无法执行升级任务。"));
+        return;
+    }
+
     const QString taskId = selectedAircraftTaskId();
     if (taskId.isEmpty()) {
-        QMessageBox::information(this, "执行任务", "请先选择一个飞机升级任务。");
+        QMessageBox::information(this,
+                                 QStringLiteral("执行任务"),
+                                 QStringLiteral("请先勾选一个需要执行的飞机升级任务。"));
         return;
     }
 
@@ -362,17 +511,23 @@ void MainWindow::startSelectedAircraftTask()
         LogContext context;
         context.operator_user_id = m_userInfo.user_id;
         context.aircraft_task_id = taskId.toInt();
-        Logger::warn("TASK_START_REJECTED", QString("启动飞机升级任务失败: %1").arg(taskId), context);
-        QMessageBox::warning(this, "执行任务", "启动飞机升级任务失败，请检查任务状态和设备子任务。");
+        Logger::warn("TASK_START_REJECTED",
+                     QStringLiteral("飞机升级任务启动失败: %1").arg(taskId),
+                     context);
+        QMessageBox::warning(this,
+                             QStringLiteral("执行任务"),
+                             QStringLiteral("启动升级任务失败，请检查任务状态或查看日志页面。"));
         return;
     }
 
     LogContext context;
     context.operator_user_id = m_userInfo.user_id;
     context.aircraft_task_id = taskId.toInt();
-    Logger::info("TASK_START_SUBMITTED", QString("用户启动飞机升级任务: %1").arg(taskId), context);
+    Logger::info("TASK_START_SUBMITTED",
+                 QStringLiteral("飞机升级任务已提交执行: %1").arg(taskId),
+                 context);
     showTaskProgressControls();
-    statusBar()->showMessage(QString("已启动飞机升级任务: %1").arg(taskId), 5000);
+    statusBar()->showMessage(QStringLiteral("已提交升级任务 %1").arg(taskId), 5000);
     loadExecutableTasks();
 }
 

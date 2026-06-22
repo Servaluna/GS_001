@@ -2,6 +2,7 @@
 #define SERVERLOGGER_H
 
 #include <QDateTime>
+#include <QFile>
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
@@ -99,11 +100,17 @@ private:
 
     ServerLogEntry withDefaults(const ServerLogEntry& entry) const;
     void writeToQtLog(const ServerLogEntry& entry) const;
+    void writeToFileLog(const ServerLogEntry& entry);
     void writeToDatabase(const ServerLogEntry& entry);
+    QString logDirectoryPath() const;
+    QString currentLogFilePath() const;
+    QString formatLogLine(const ServerLogEntry& entry) const;
 
     QString m_serverMachineId;
     bool m_databaseLoggingEnabled = true;
     bool m_writingDatabase = false;
+    mutable QFile m_logFile;
+    mutable QString m_logFilePath;
 };
 
 #endif // SERVERLOGGER_H

@@ -33,8 +33,28 @@ QString defaultStoragePath(const FileInfo& fileInfo)
     const QString fileName = fileInfo.file_name.isEmpty()
         ? fileInfo.file_code + ".bin"
         : fileInfo.file_name;
+    QString typeFolder = "MISC";
+    switch (fileInfo.file_type) {
+    case FileType::Firmware:
+        typeFolder = "FW";
+        break;
+    case FileType::Software:
+        typeFolder = "SW";
+        break;
+    case FileType::Config:
+        typeFolder = "CFG";
+        break;
+    case FileType::Script:
+        typeFolder = "SCRIPT";
+        break;
+    case FileType::Log:
+        typeFolder = "LOG";
+        break;
+    default:
+        break;
+    }
     return QDir::cleanPath(QDir(centralServerProjectDir())
-        .filePath(QString("data/storage/%1/%2").arg(fileInfo.file_code, fileName)));
+        .filePath(QString("data/storage/%1/%2").arg(typeFolder, fileName)));
 }
 
 QString resolveStoragePath(const FileInfo& fileInfo)
@@ -47,6 +67,14 @@ QString resolveStoragePath(const FileInfo& fileInfo)
     const QString projectRelative = QDir(centralServerProjectDir()).filePath(fileInfo.storage_path);
     if (QFileInfo::exists(projectRelative)) {
         return QDir::cleanPath(QFileInfo(projectRelative).absoluteFilePath());
+    }
+
+    const QString legacyPath = QDir(centralServerProjectDir())
+        .filePath(QString("data/storage/%1/%2")
+                      .arg(fileInfo.file_code,
+                           fileInfo.file_name.isEmpty() ? fileInfo.file_code + ".bin" : fileInfo.file_name));
+    if (QFileInfo::exists(legacyPath)) {
+        return QDir::cleanPath(QFileInfo(legacyPath).absoluteFilePath());
     }
 
     return defaultStoragePath(fileInfo);

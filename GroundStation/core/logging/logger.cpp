@@ -1,9 +1,15 @@
 #include "logger.h"
 
 #include <QDebug>
+#include <QDir>
 #include <QHostInfo>
 #include <QJsonDocument>
+#include <QTextStream>
 #include <QUuid>
+
+#ifndef GROUNDSTATION_PROJECT_DIR
+#define GROUNDSTATION_PROJECT_DIR ""
+#endif
 
 namespace {
 
@@ -20,6 +26,15 @@ QString generatedMachineId()
 {
     const QString hostName = QHostInfo::localHostName();
     return hostName.isEmpty() ? QStringLiteral("GROUND-STATION") : hostName;
+}
+
+QString groundStationProjectDir()
+{
+    const QString projectDir = QString::fromUtf8(GROUNDSTATION_PROJECT_DIR);
+    if (!projectDir.isEmpty()) {
+        return QDir::cleanPath(projectDir);
+    }
+    return QDir::currentPath();
 }
 
 }
@@ -123,10 +138,20 @@ void Logger::setIpAddress(const QString& ipAddress)
     m_ipAddress = ipAddress.trimmed();
 }
 
+QList<LogEntry> Logger::recentEntries() const
+{
+    return m_recentEntries;
+}
+
 void Logger::log(const LogEntry& entry)
 {
     const LogEntry normalized = withDefaults(entry);
     writeToQtLog(normalized);
+    writeToFileLog(normalized);
+    m_recentEntries.append(normalized);
+    if (m_recentEntries.size() > MAX_RECENT_ENTRY_COUNT) {
+        m_recentEntries.remove(0, m_recentEntries.size() - MAX_RECENT_ENTRY_COUNT);
+    }
     emit logGenerated(normalized);
 }
 
@@ -201,16 +226,7 @@ LogEntry Logger::withDefaults(const LogEntry& entry) const
 
 void Logger::writeToQtLog(const LogEntry& entry) const
 {
-    const QString detail = QString::fromUtf8(
-        QJsonDocument(entry.event_detail).toJson(QJsonDocument::Compact)
-    );
-    const QString line = QString("[%1][%2][user:%3][session:%4] %5 %6")
-                             .arg(entry.event_level,
-                                  entry.event_type,
-                                  entry.operator_user_id > 0 ? QString::number(entry.operator_user_id) : QStringLiteral("-"),
-                                  entry.session_id,
-                                  entry.event_message,
-                                  detail);
+    const QString line = formatLogLine(entry);
 
     if (entry.event_level == "ERROR") {
         qCritical().noquote() << line;
@@ -221,4 +237,64 @@ void Logger::writeToQtLog(const LogEntry& entry) const
     } else {
         qInfo().noquote() << line;
     }
+}
+
+void Logger::writeToFileLog(const LogEntry& entry)
+{
+    const QString logFilePath = currentLogFilePath();
+    if (logFilePath.isEmpty()) {
+        return;
+    }
+
+    if (m_logFilePath != logFilePath) {
+        if (m_logFile.isOpen()) {
+            m_logFile.close();
+        }
+        m_logFile.setFileName(logFilePath);
+        m_logFilePath = logFilePath;
+    }
+
+    if (!m_logFile.isOpen() && !m_logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        return;
+    }
+
+    QTextStream stream(&m_logFile);
+    stream.setEncoding(QStringConverter::Utf8);
+    stream << entry.created_at.toString("yyyy-MM-dd hh:mm:ss.zzz")
+           << ' '
+           << formatLogLine(entry)
+           << '\n';
+    stream.flush();
+}
+
+QString Logger::logDirectoryPath() const
+{
+    return QDir::cleanPath(QDir(groundStationProjectDir()).filePath("data/logs"));
+}
+
+QString Logger::currentLogFilePath() const
+{
+    const QString dirPath = logDirectoryPath();
+    QDir dir;
+    if (!dir.exists(dirPath) && !dir.mkpath(dirPath)) {
+        return QString();
+    }
+
+    const QString fileName = QString("groundstation_%1.log")
+        .arg(QDate::currentDate().toString("yyyyMMdd"));
+    return QDir(dirPath).filePath(fileName);
+}
+
+QString Logger::formatLogLine(const LogEntry& entry) const
+{
+    const QString detail = QString::fromUtf8(
+        QJsonDocument(entry.event_detail).toJson(QJsonDocument::Compact)
+    );
+    return QString("[%1][%2][user:%3][session:%4] %5 %6")
+        .arg(entry.event_level,
+             entry.event_type,
+             entry.operator_user_id > 0 ? QString::number(entry.operator_user_id) : QStringLiteral("-"),
+             entry.session_id,
+             entry.event_message,
+             detail);
 }

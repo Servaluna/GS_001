@@ -5,8 +5,12 @@
 AircraftSimulator::AircraftSimulator(QObject *parent)
     : QObject{parent}
     , m_devices({
-          {"ADG", "飞机数据网关", "1.0.0", true},
-          {"CMC", "中央维护计算机", "1.0.0", true}
+          {"ADG", "Aircraft Data Gateway", "1.0.0", true},
+          {"CMC", "Central Maintenance Computer", "1.0.0", true},
+          {"DEV-1001-01", "Mission Computer", "1.0.5", true},
+          {"DEV-1001-02", "Flight Control System", "2.0.1", true},
+          {"DEV-1001-03", "Data Link Module", "1.0.0", true},
+          {"DEV-1001-04", "GPS Sensor", "1.1.0", true}
       })
 {}
 
@@ -35,6 +39,6 @@ bool AircraftSimulator::verifyPackage(const QByteArray& data, qint64 expectedSiz
         return true;
     }
 
-    const QString actualSha256 = QString(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
+    const QString actualSha256 = QString::fromLatin1(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
     return actualSha256.compare(expectedSha256, Qt::CaseInsensitive) == 0;
 }

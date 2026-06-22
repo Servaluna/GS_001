@@ -12,6 +12,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QRegularExpression>
 
 #ifndef GROUNDSTATION_PROJECT_DIR
 #define GROUNDSTATION_PROJECT_DIR ""
@@ -37,15 +38,36 @@ LogContext deviceContext(const AircraftTask& aircraftTask, const DeviceTask& dev
     return context;
 }
 
-QString downloadCachePath(int aircraftTaskId, const QString& fileCode)
+QString sanitizePathPart(QString value, const QString& fallback)
+{
+    value = value.trimmed();
+    if (value.isEmpty()) {
+        value = fallback;
+    }
+
+    value.replace(QRegularExpression("[\\\\/:*?\"<>|\\s]+"), "_");
+    return value;
+}
+
+QString downloadCachePath(const AircraftTask& aircraftTask, const DeviceTask& deviceTask)
 {
     const QString projectDir = QString::fromUtf8(GROUNDSTATION_PROJECT_DIR);
     const QString baseDir = !projectDir.isEmpty() && QFileInfo::exists(QDir(projectDir).filePath("GroundStation.pro"))
         ? projectDir
         : QDir::currentPath();
 
+    const QString batchPart = QString("batch_%1").arg(aircraftTask.batch_id);
+    const QString aircraftPart = sanitizePathPart(aircraftTask.aircraft_code,
+                                                  QString("aircraft_task_%1").arg(aircraftTask.aircraft_task_id));
+    const QString taskPart = QString("aircraft_task_%1").arg(aircraftTask.aircraft_task_id);
+    const QString devicePart = QString("device_task_%1_%2")
+        .arg(deviceTask.device_task_id)
+        .arg(sanitizePathPart(deviceTask.device_code, "device"));
+    const QString fileName = QString("%1.bin").arg(sanitizePathPart(deviceTask.file_code, "package"));
+
     return QDir::cleanPath(QDir(baseDir).filePath(
-        QString("data/cache/files/%1/%2.bin").arg(aircraftTaskId).arg(fileCode)));
+        QString("data/cache/files/%1/%2/%3/%4/%5")
+            .arg(batchPart, aircraftPart, taskPart, devicePart, fileName)));
 }
 
 }
@@ -57,6 +79,7 @@ TaskScheduler::TaskScheduler(QObject *parent)
     , m_transferManager(nullptr)
     , m_stateMachine(nullptr)
     , m_currentDeviceIndex(-1)
+    , m_runStage(TaskRunStage::DownloadingFiles)
     , m_processTimer(nullptr)
     , m_isRunning(false)
     , m_initialized(false)
@@ -98,8 +121,8 @@ bool TaskScheduler::init(TaskRepository* repository,
     connect(m_transferManager, &TransferManager::transferProgress,
             this, &TaskScheduler::onTransferProgress);
     connect(m_transferManager, &TransferManager::installResult,
-            this, [this](const QString& taskId, const QString&, bool success, const QString& message) {
-                onDeviceInstallResult(taskId, success, message);
+            this, [this](const QString& taskId, const QString& deviceId, bool success, const QString& message) {
+                onDeviceInstallResult(taskId, deviceId, success, message);
             });
 
     m_processTimer = new QTimer(this);
@@ -170,8 +193,24 @@ bool TaskScheduler::startTask(const QString& aircraftTaskId)
     }
 
     if (TaskStatusText::isRunning(task.status)) {
-        Logger::warn("TASK_START_REJECTED", "飞机任务正在执行", aircraftContext(task));
-        return false;
+        const bool isCurrentTask = m_currentAircraftTask.isValid() &&
+                                   m_currentAircraftTask.aircraft_task_id == id;
+        const bool isQueuedTask = m_taskQueue.contains(id);
+        if (isCurrentTask || isQueuedTask) {
+            Logger::warn("TASK_START_REJECTED", "飞机任务正在执行", aircraftContext(task));
+            return false;
+        }
+
+        Logger::warn("TASK_RUNNING_STATE_RESET",
+                     "检测到飞机任务残留运行状态，准备重置后重新启动",
+                     aircraftContext(task),
+                     {{"status", TaskStatusText::toInt(task.status)},
+                      {"current_phase", task.current_phase}});
+
+        if (!m_stateMachine->resetForStart(id)) {
+            Logger::error("TASK_START_REJECTED", "任务状态重置失败", aircraftContext(task));
+            return false;
+        }
     }
 
     const QList<DeviceTask> deviceTasks = m_repository->getDeviceTasksByAircraftTaskId(id);
@@ -327,6 +366,8 @@ void TaskScheduler::onDownloadProgress(QString taskUuid, qint64 transferred, qin
 
 void TaskScheduler::onDownloadFinished(QString taskUuid, const QString& localPath, bool success)
 {
+    Q_UNUSED(localPath);
+
     if (taskUuid != m_currentDownloadUuid || !m_currentDeviceTask.isValid()) {
         return;
     }
@@ -340,7 +381,12 @@ void TaskScheduler::onDownloadFinished(QString taskUuid, const QString& localPat
         m_speedUpdateTimer->stop();
     }
 
-    startSendToDevice(localPath);
+    Logger::info("DEVICE_FILE_CACHED",
+                 QString("设备任务 %1 文件已缓存到 GS").arg(m_currentDeviceTask.device_task_id),
+                 deviceContext(m_currentAircraftTask, m_currentDeviceTask));
+    m_currentDownloadUuid.clear();
+    ++m_currentDeviceIndex;
+    processNextDeviceTask();
 }
 
 void TaskScheduler::onDownloadFailed(QString taskUuid, int errorCode, const QString& errorMessage)
@@ -462,9 +508,18 @@ void TaskScheduler::onDeviceSendFinished(QString taskId, bool success, const QSt
     emit taskProgressUpdated(aircraftTaskKey(), "安装中", 90);
 }
 
-void TaskScheduler::onDeviceInstallResult(QString taskId, bool success, const QString& message)
+void TaskScheduler::onDeviceInstallResult(QString taskId, QString deviceId, bool success, const QString& message)
 {
-    if (taskId != deviceTaskKey(m_currentDeviceTask) || !m_currentDeviceTask.isValid()) {
+    if (!m_currentDeviceTask.isValid()) {
+        return;
+    }
+
+    if (taskId != deviceTaskKey(m_currentDeviceTask) ||
+        deviceId != m_currentDeviceTask.device_code) {
+        Logger::warn("INSTALL_RESULT_IGNORED",
+                     "收到与当前设备任务不匹配的安装结果，已忽略",
+                     deviceContext(m_currentAircraftTask, m_currentDeviceTask),
+                     {{"received_task_id", taskId}, {"received_device_code", deviceId}});
         return;
     }
 
@@ -546,6 +601,7 @@ void TaskScheduler::processNextTask()
 
     m_currentDeviceTasks = m_repository->getDeviceTasksByAircraftTaskId(aircraftTaskId);
     m_currentDeviceIndex = 0;
+    m_runStage = TaskRunStage::DownloadingFiles;
     m_retryCount = 0;
 
     m_stateMachine->updateAircraftStatus(aircraftTaskId, DeviceTaskStatus::Downloading, 0.0);
@@ -574,6 +630,17 @@ void TaskScheduler::processNextDeviceTask()
     }
 
     if (m_currentDeviceIndex >= m_currentDeviceTasks.size()) {
+        if (m_runStage == TaskRunStage::DownloadingFiles) {
+            Logger::info("TASK_DOWNLOAD_CACHE_FINISHED",
+                         QString("飞机任务 %1 的全部设备文件已缓存到 GS").arg(m_currentAircraftTask.aircraft_task_id),
+                         aircraftContext(m_currentAircraftTask),
+                         {{"device_task_count", m_currentDeviceTasks.size()}});
+            m_runStage = TaskRunStage::TransferringFiles;
+            m_currentDeviceIndex = 0;
+            processNextDeviceTask();
+            return;
+        }
+
         completeCurrentAircraftTask(true, "任务执行完成");
         return;
     }
@@ -584,7 +651,11 @@ void TaskScheduler::processNextDeviceTask()
                  QString("开始执行设备任务 %1").arg(m_currentDeviceTask.device_task_id),
                  deviceContext(m_currentAircraftTask, m_currentDeviceTask),
                  {{"device_code", m_currentDeviceTask.device_code}, {"file_code", m_currentDeviceTask.file_code}});
-    startDownloadTask(m_currentDeviceTask);
+    if (m_runStage == TaskRunStage::DownloadingFiles) {
+        startDownloadTask(m_currentDeviceTask);
+    } else {
+        startTransferTask(m_currentDeviceTask);
+    }
 }
 
 void TaskScheduler::startDownloadTask(const DeviceTask& deviceTask)
@@ -620,6 +691,21 @@ void TaskScheduler::startDownloadTask(const DeviceTask& deviceTask)
                       {{"download_session_id", downloadTask.task_uuid}, {"file_code", downloadTask.file_code}});
         onDownloadFailed(downloadTask.task_uuid, 1000, "无法启动下载");
     }
+}
+
+void TaskScheduler::startTransferTask(const DeviceTask& deviceTask)
+{
+    const DownloadTask downloadTask = m_repository->getDownloadTaskByDeviceTaskId(deviceTask.device_task_id);
+    if (!downloadTask.isValid() || downloadTask.local_path.isEmpty()) {
+        Logger::error("TRANSFER_START_FAILED",
+                      "设备文件尚未缓存，无法开始传输",
+                      deviceContext(m_currentAircraftTask, deviceTask),
+                      {{"device_task_id", deviceTask.device_task_id}, {"file_code", deviceTask.file_code}});
+        completeCurrentAircraftTask(false, QString("设备 %1 文件尚未缓存").arg(deviceTask.device_code));
+        return;
+    }
+
+    startSendToDevice(downloadTask.local_path);
 }
 
 void TaskScheduler::startSendToDevice(const QString& localPath)
@@ -736,13 +822,20 @@ DownloadTask TaskScheduler::ensureDownloadTask(const DeviceTask& deviceTask)
 {
     DownloadTask task = m_repository->getDownloadTaskByDeviceTaskId(deviceTask.device_task_id);
     if (task.isValid()) {
+        const QString expectedLocalPath = downloadCachePath(m_currentAircraftTask, deviceTask);
+        if (task.local_path != expectedLocalPath) {
+            task.local_path = expectedLocalPath;
+            task.temp_path = task.local_path + ".part";
+            task.updated_at = QDateTime::currentDateTime();
+            m_repository->saveDownloadTask(task);
+        }
         return task;
     }
 
     task.task_uuid = QString::number(deviceTask.device_task_id);
     task.device_task_id = deviceTask.device_task_id;
     task.file_code = deviceTask.file_code;
-    task.local_path = downloadCachePath(m_currentAircraftTask.aircraft_task_id, deviceTask.file_code);
+    task.local_path = downloadCachePath(m_currentAircraftTask, deviceTask);
     task.temp_path = task.local_path + ".part";
     task.downloaded_size = deviceTask.downloaded_size;
     task.total_size = deviceTask.total_size;
@@ -812,6 +905,7 @@ void TaskScheduler::clearCurrentTask()
     m_currentAircraftTask = AircraftTask();
     m_currentDeviceTasks.clear();
     m_currentDeviceIndex = -1;
+    m_runStage = TaskRunStage::DownloadingFiles;
     m_currentDeviceTask = DeviceTask();
     m_currentDownloadUuid.clear();
     m_currentTransferSessionId.clear();

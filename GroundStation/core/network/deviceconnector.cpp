@@ -413,7 +413,7 @@ bool DeviceConnector::parsePacket(const QByteArray& data, Command& cmd, QByteArr
     quint32 payloadSize;
     stream >> payloadSize;
 
-    const int totalSize = PACKET_HEADER_SIZE + payloadSize + 2;
+    const int totalSize = PACKET_HEADER_SIZE + payloadSize;
     if (data.size() < totalSize) {
         return false;
     }
@@ -578,6 +578,8 @@ void DeviceConnector::handleFileReceiveResult(const QByteArray& payload)
 
 void DeviceConnector::handleInstallResult(const QByteArray& payload)
 {
+    cleanupFileTransfer();
+
     QDataStream stream(payload);
     stream.setByteOrder(QDataStream::BigEndian);
 
@@ -607,7 +609,6 @@ void DeviceConnector::handleInstallResult(const QByteArray& payload)
                  {{"device_task_id", taskId}, {"device_code", deviceId}, {"message", message}});
 
     emit installResult(taskId, deviceId, success == 1, message);
-    cleanupFileTransfer();
 }
 
 void DeviceConnector::cleanupFileTransfer()

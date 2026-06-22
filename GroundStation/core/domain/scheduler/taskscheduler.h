@@ -17,6 +17,11 @@ class TaskRepository;
 class TaskStateMachine;
 class TransferManager;
 
+enum class TaskRunStage {
+    DownloadingFiles,
+    TransferringFiles
+};
+
 class TaskScheduler : public QObject
 {
     Q_OBJECT
@@ -56,7 +61,7 @@ private slots:
     void onDownloadFailed(QString taskUuid, int errorCode, const QString& errorMessage);
     void onTransferProgress(QString taskId, qint64 sent, qint64 total, int percent);
     void onDeviceSendFinished(QString taskId, bool success, const QString& message);
-    void onDeviceInstallResult(QString taskId, bool success, const QString& message);
+    void onDeviceInstallResult(QString taskId, QString deviceId, bool success, const QString& message);
     void onProcessNextTask();
     void onUpdateDownloadSpeed();
 
@@ -64,6 +69,7 @@ private:
     void processNextTask();
     void processNextDeviceTask();
     void startDownloadTask(const DeviceTask& deviceTask);
+    void startTransferTask(const DeviceTask& deviceTask);
     void startSendToDevice(const QString& localPath);
     void completeCurrentAircraftTask(bool success, const QString& message);
     void reportTaskStatus(DeviceTaskStatus aircraftStatus,
@@ -91,6 +97,7 @@ private:
     AircraftTask m_currentAircraftTask;
     QList<DeviceTask> m_currentDeviceTasks;
     int m_currentDeviceIndex;
+    TaskRunStage m_runStage;
     DeviceTask m_currentDeviceTask;
     QString m_currentDownloadUuid;
     QString m_currentTransferSessionId;

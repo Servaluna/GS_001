@@ -179,6 +179,39 @@ bool LocalDatabase::rollbackTransaction()
     return m_isInitialized && m_db.rollback();
 }
 
+bool LocalDatabase::clearBusinessData()
+{
+    if (!m_isInitialized) {
+        Logger::warn("DATABASE_CLEAR_REJECTED", "数据库未初始化，无法清空业务数据");
+        return false;
+    }
+
+    if (!beginTransaction()) {
+        Logger::error("DATABASE_CLEAR_FAILED", "开始清空本地业务数据事务失败");
+        return false;
+    }
+
+    const bool ok =
+        executeQuery("DELETE FROM transfer_session") &&
+        executeQuery("DELETE FROM download_session") &&
+        executeQuery("DELETE FROM device_upgrade_task");
+
+    if (!ok) {
+        rollbackTransaction();
+        Logger::error("DATABASE_CLEAR_FAILED", "清空本地业务数据失败，事务已回滚");
+        return false;
+    }
+
+    if (!commitTransaction()) {
+        rollbackTransaction();
+        Logger::error("DATABASE_CLEAR_FAILED", "提交清空本地业务数据事务失败");
+        return false;
+    }
+
+    Logger::info("DATABASE_CLEARED", "已清空 GS 本地业务数据");
+    return true;
+}
+
 bool LocalDatabase::createTables()
 {
     const QString createDeviceUpgradeTaskSql = R"(

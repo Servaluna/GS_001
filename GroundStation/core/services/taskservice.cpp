@@ -1,6 +1,7 @@
 #include "taskservice.h"
 
 #include "../logging/logger.h"
+#include "../localdatabase/localdatabase.h"
 #include "../repository/taskrepository.h"
 #include "../domain/download/downloadmanager.h"
 #include "../domain/scheduler/taskscheduler.h"
@@ -246,6 +247,23 @@ QList<AircraftTask> TaskService::getExecutableAircraftTasksForUser(int userId, i
                  "读取当前用户可执行飞机任务完成",
                  {{"user_id", userId}, {"role_id", roleId}, {"aircraft_task_count", tasks.size()}});
     return tasks;
+}
+
+bool TaskService::clearLocalTaskData()
+{
+    if (!m_initialized) {
+        Logger::warn("TASK_LOCAL_CLEAR_REJECTED", "任务服务未初始化，无法清空本地任务数据");
+        return false;
+    }
+
+    if (!LocalDatabase::getInstance()->clearBusinessData()) {
+        Logger::error("TASK_LOCAL_CLEAR_FAILED", "清空本地任务数据库失败");
+        return false;
+    }
+
+    m_repository->clearCache();
+    Logger::info("TASK_LOCAL_CLEAR_FINISHED", "已清空当前用户本地任务数据和缓存");
+    return true;
 }
 
 bool TaskService::startTask(const QString& taskId)
