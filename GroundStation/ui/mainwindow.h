@@ -10,7 +10,6 @@
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QPointer>
-#include <QPushButton>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 
@@ -22,7 +21,6 @@ QT_END_NAMESPACE
 
 class TaskService;
 class QLabel;
-class QSpacerItem;
 
 class MainWindow : public QMainWindow
 {
@@ -36,7 +34,7 @@ public:
     void updateTaskList(const QList<AircraftTask>& tasks);
     void showExecutePageAndReload();
     void setNetworkConnectionStatus(bool connected);
-    void setAircraftConnectionStatus(bool connected);
+    void setAircraftConnectionStatus(bool connected, const QString& aircraftCode = QString());
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -59,6 +57,10 @@ private:
     void loadExecutableTasks();
     void showTaskStartControls();
     void showTaskProgressControls();
+    void resetTaskProgressPanel();
+    void onTaskStarted(const QString& taskId, const QString& taskName);
+    void onTaskProgressUpdated(const QString& taskId, const QString& step, int progress, qint64 speed);
+    void onTaskFinished(const QString& taskId, bool success, const QString& message);
     void startSelectedAircraftTask();
     void initLogsPage();
     void appendLogEntryToTable(const LogEntry& entry);
@@ -75,10 +77,10 @@ private:
     UserInfo m_userInfo;
     QPointer<TaskService> m_taskService;
     bool m_aircraftConnected = false;
-    QPointer<QPushButton> m_btnStartAircraftTask;
+    QString m_connectedAircraftCode;
+    QString m_activeAircraftTaskId;
     QPointer<QTableWidget> m_tblLogs;
     QPointer<QLabel> m_lblLogSummary;
-    QSpacerItem* m_taskStartSpacer = nullptr;
 };
 
 #endif // MAINWINDOW_H

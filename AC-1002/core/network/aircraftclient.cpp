@@ -12,18 +12,18 @@
 #include <QRegularExpression>
 #include <QTimer>
 
-#ifndef AC1001_PROJECT_DIR
-#define AC1001_PROJECT_DIR ""
+#ifndef AC1002_PROJECT_DIR
+#define AC1002_PROJECT_DIR ""
 #endif
 
 namespace {
 
-constexpr auto AIRCRAFT_CODE = "AC-1001";
+constexpr auto AIRCRAFT_CODE = "AC-1002";
 
-QString ac1001ProjectDir()
+QString ac1002ProjectDir()
 {
-    const QString projectDir = QString::fromUtf8(AC1001_PROJECT_DIR);
-    if (!projectDir.isEmpty() && QFileInfo::exists(QDir(projectDir).filePath("AC-1001.pro"))) {
+    const QString projectDir = QString::fromUtf8(AC1002_PROJECT_DIR);
+    if (!projectDir.isEmpty() && QFileInfo::exists(QDir(projectDir).filePath("AC-1002.pro"))) {
         return QDir::cleanPath(projectDir);
     }
     return QDir::currentPath();
@@ -311,7 +311,7 @@ void AircraftClient::sendInstallResultForTask(const QString& taskId,
 
 QString AircraftClient::receiveDirectory() const
 {
-    return QDir::cleanPath(QDir(ac1001ProjectDir()).filePath("data/ADG/upgrade_cache"));
+    return QDir::cleanPath(QDir(ac1002ProjectDir()).filePath("data/ADG/upgrade_cache"));
 }
 
 QString AircraftClient::buildLocalPackagePath(const QString& taskId,

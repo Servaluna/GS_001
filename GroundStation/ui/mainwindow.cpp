@@ -4,10 +4,10 @@
 #include "../core/logging/logger.h"
 #include "../core/services/taskservice.h"
 
+#include <QCheckBox>
 #include <QHeaderView>
-#include <QHBoxLayout>
+#include <QJsonDocument>
 #include <QLabel>
-#include <QSizePolicy>
 #include <QSignalBlocker>
 #include <QStatusBar>
 #include <QTableWidget>
@@ -54,35 +54,41 @@ MainWindow::~MainWindow()
 void MainWindow::initUI()
 {
     const QString roleName = roleDisplayName(m_userInfo.role_id, m_userInfo.role);
-    ui->lblUsername->setText(QString("用户名：%1").arg(m_userInfo.username));
-    ui->lblRole->setText(QString("身份：%1").arg(roleName));
+    ui->lblUsername->setText(QStringLiteral("用户名：%1").arg(m_userInfo.username));
+    ui->lblRole->setText(QStringLiteral("身份：%1").arg(roleName));
 
-    QString title = QString("地面站系统 - [%1]").arg(m_userInfo.role);
-    setWindowTitle(title);
-
-    QString welcome = QString("欢迎用户: %1 (%2)").arg(m_userInfo.username, m_userInfo.role);
-    statusBar()->showMessage(welcome, 5000);
+    setWindowTitle(QStringLiteral("地面站系统 - [%1]").arg(roleName));
+    statusBar()->showMessage(QStringLiteral("欢迎用户：%1 (%2)").arg(m_userInfo.username, roleName), 5000);
 
     ui->btnAlwaysOnTop->setCheckable(true);
     ui->btnAlwaysOnTop->setChecked(false);
-    ui->btnAlwaysOnTop->setText("置顶");
-    ui->btnAlwaysOnTop->setToolTip("让地面站窗口保持在屏幕最前面");
+    ui->btnAlwaysOnTop->setToolTip(QStringLiteral("让地面站窗口保持在屏幕最前面"));
+
     setNetworkConnectionStatus(true);
     setAircraftConnectionStatus(false);
 
     initButtonsByRole();
     initTableTask();
     initLogsPage();
+    resetTaskProgressPanel();
     showTaskStartControls();
 
     ui->stkMainPages->setCurrentIndex(0);
 
     connect(ui->btnAlwaysOnTop, &QPushButton::toggled,
             this, &MainWindow::on_btnAlwaysOnTop_toggled);
-    connect(m_btnStartAircraftTask, &QPushButton::clicked,
+    connect(ui->btnStartAircraftTask, &QPushButton::clicked,
             this, &MainWindow::startSelectedAircraftTask);
     connect(&Logger::instance(), &Logger::logGenerated,
             this, &MainWindow::appendLogEntryToTable);
+    if (m_taskService) {
+        connect(m_taskService, &TaskService::taskStarted,
+                this, &MainWindow::onTaskStarted);
+        connect(m_taskService, &TaskService::taskProgressUpdated,
+                this, &MainWindow::onTaskProgressUpdated);
+        connect(m_taskService, &TaskService::taskFinished,
+                this, &MainWindow::onTaskFinished);
+    }
 
     const QList<LogEntry> existingLogs = Logger::instance().recentEntries();
     for (const LogEntry& entry : existingLogs) {
@@ -99,7 +105,7 @@ void MainWindow::on_btnAlwaysOnTop_toggled(bool checked)
         : (windowFlags() & ~Qt::WindowStaysOnTopHint);
 
     setWindowFlags(flags);
-    ui->btnAlwaysOnTop->setText(checked ? "取消置顶" : "置顶");
+    ui->btnAlwaysOnTop->setText(checked ? QStringLiteral("取消置顶") : QStringLiteral("置顶"));
     show();
     raise();
     activateWindow();
@@ -113,17 +119,11 @@ void MainWindow::initButtonsByRole()
     switch (UserRole::roleFromId(m_userInfo.role_id)) {
     case UserRole::Admin:
         ui->btnExecute->setVisible(true);
-        ui->btnObtain->setVisible(false);
         ui->btnLogs->setVisible(true);
         break;
     case UserRole::Engineer:
-        ui->btnExecute->setVisible(true);
-        ui->btnObtain->setVisible(false);
-        ui->btnLogs->setVisible(false);
-        break;
     case UserRole::Operator:
         ui->btnExecute->setVisible(true);
-        ui->btnObtain->setVisible(false);
         ui->btnLogs->setVisible(false);
         break;
     default:
@@ -135,61 +135,52 @@ void MainWindow::loadExecutableTasks()
 {
     if (!m_taskService) {
         Logger::warn("TASK_TABLE_LOAD_REJECTED",
-                     "任务服务为空，无法加载任务表",
+                     QStringLiteral("任务服务为空，无法加载任务表"),
                      {{"user_id", m_userInfo.user_id}, {"role_id", m_userInfo.role_id}});
         updateTaskList({});
         return;
     }
 
     Logger::info("TASK_TABLE_LOAD_START",
-                 "开始加载执行页面任务表",
+                 QStringLiteral("开始加载执行页面任务表"),
                  {{"user_id", m_userInfo.user_id}, {"role_id", m_userInfo.role_id}, {"username", m_userInfo.username}});
     const QList<AircraftTask> tasks = m_taskService->getExecutableAircraftTasksForUser(m_userInfo.user_id, m_userInfo.role_id);
     Logger::info("TASK_TABLE_LOAD_FINISHED",
-                 "执行页面任务表数据加载完成",
+                 QStringLiteral("执行页面任务表数据加载完成"),
                  {{"user_id", m_userInfo.user_id}, {"role_id", m_userInfo.role_id}, {"aircraft_task_count", tasks.size()}});
     updateTaskList(tasks);
 }
 
 void MainWindow::showTaskStartControls()
 {
-    ui->lblCurrentFile->hide();
-    ui->lblCurrentPhase->hide();
-    ui->progressTask->hide();
-
-    if (!m_btnStartAircraftTask) {
-        m_btnStartAircraftTask = new QPushButton("执行升级任务", ui->pnlTaskActions);
-        m_btnStartAircraftTask->setObjectName("btnStartAircraftTaskRuntime");
-        m_btnStartAircraftTask->setMinimumWidth(120);
-        ui->layTaskActions->addWidget(m_btnStartAircraftTask);
-    }
-
-    if (!m_taskStartSpacer) {
-        m_taskStartSpacer = new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum);
-        ui->layTaskActions->insertSpacerItem(0, m_taskStartSpacer);
-    }
-
-    m_btnStartAircraftTask->show();
+    ui->stkTaskActions->setCurrentWidget(ui->pageTaskActionStart);
 }
 
 void MainWindow::showTaskProgressControls()
 {
-    if (m_btnStartAircraftTask) {
-        m_btnStartAircraftTask->hide();
-    }
-    if (m_taskStartSpacer) {
-        ui->layTaskActions->removeItem(m_taskStartSpacer);
-        delete m_taskStartSpacer;
-        m_taskStartSpacer = nullptr;
-    }
-    ui->lblCurrentFile->show();
-    ui->lblCurrentPhase->show();
-    ui->progressTask->show();
+    ui->stkTaskActions->setCurrentWidget(ui->pageTaskActionProgress);
+}
+
+void MainWindow::resetTaskProgressPanel()
+{
+    m_activeAircraftTaskId.clear();
+    ui->lblCurrentFile->setText(QStringLiteral("当前任务：未执行"));
+    ui->lblCurrentPhase->setText(QStringLiteral("当前阶段：等待开始"));
+    ui->progressTask->setRange(0, 100);
+    ui->progressTask->setValue(0);
+    ui->progressTask->setFormat(QStringLiteral("%p%"));
 }
 
 void MainWindow::initTableTask()
 {
-    QStringList headers = {"选择", "飞机任务ID", "批次ID", "飞机编号", "当前阶段"};
+    const QStringList headers = {
+        QStringLiteral("选择"),
+        QStringLiteral("飞机任务ID"),
+        QStringLiteral("批次ID"),
+        QStringLiteral("飞机编号"),
+        QStringLiteral("当前阶段")
+    };
+
     ui->tblTasks->setColumnCount(headers.size());
     ui->tblTasks->setHorizontalHeaderLabels(headers);
 
@@ -207,6 +198,7 @@ void MainWindow::initTableTask()
     ui->tblTasks->horizontalHeader()->setStretchLastSection(false);
     ui->tblTasks->horizontalHeader()->setHighlightSections(false);
     ui->tblTasks->horizontalHeader()->setDefaultAlignment(Qt::AlignCenter);
+
     ui->tblTasks->setAlternatingRowColors(false);
     ui->tblTasks->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->tblTasks->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -244,29 +236,19 @@ void MainWindow::initTableTask()
 
 void MainWindow::initLogsPage()
 {
-    auto* logsLayout = new QVBoxLayout(ui->widget_3);
-    logsLayout->setContentsMargins(16, 16, 16, 16);
-    logsLayout->setSpacing(12);
+    ui->lblLogsTitle->setStyleSheet("font-size: 18px; font-weight: 600;");
+    ui->lblLogsSummary->setStyleSheet("color: #5f6b7a; line-height: 1.4;");
 
-    auto* titleLabel = new QLabel(QStringLiteral("GS运行日志"), ui->widget_3);
-    titleLabel->setStyleSheet("font-size: 18px; font-weight: 600;");
-    logsLayout->addWidget(titleLabel);
-
-    m_lblLogSummary = new QLabel(QStringLiteral("显示当前 GroundStation 客户端运行期间产生的日志"), ui->widget_3);
-    m_lblLogSummary->setWordWrap(true);
-    m_lblLogSummary->setStyleSheet("color: #5f6b7a; line-height: 1.4;");
-    logsLayout->addWidget(m_lblLogSummary);
-
-    m_tblLogs = new QTableWidget(ui->widget_3);
-    m_tblLogs->setObjectName("tblLogs");
+    m_lblLogSummary = ui->lblLogsSummary;
+    m_tblLogs = ui->tblLogs;
     m_tblLogs->setColumnCount(5);
-    m_tblLogs->setHorizontalHeaderLabels(
-        {QStringLiteral("时间"),
-         QStringLiteral("级别"),
-         QStringLiteral("事件"),
-         QStringLiteral("内容"),
-         QStringLiteral("详情")}
-    );
+    m_tblLogs->setHorizontalHeaderLabels({
+        QStringLiteral("时间"),
+        QStringLiteral("级别"),
+        QStringLiteral("事件"),
+        QStringLiteral("内容"),
+        QStringLiteral("详情")
+    });
     m_tblLogs->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_tblLogs->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_tblLogs->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -304,14 +286,12 @@ void MainWindow::initLogsPage()
         "color: palette(text);"
         "}"
     );
-
-    logsLayout->addWidget(m_tblLogs, 1);
 }
 
 void MainWindow::updateTaskList(const QList<AircraftTask>& tasks)
 {
     Logger::info("TASK_TABLE_RENDER",
-                 "刷新执行页面任务表",
+                 QStringLiteral("刷新执行页面任务表"),
                  {{"aircraft_task_count", tasks.size()}});
     const QSignalBlocker blocker(ui->tblTasks);
     ui->tblTasks->setRowCount(tasks.size());
@@ -324,6 +304,55 @@ void MainWindow::showExecutePageAndReload()
 {
     ui->stkMainPages->setCurrentIndex(0);
     loadExecutableTasks();
+}
+
+void MainWindow::onTaskStarted(const QString& taskId, const QString& taskName)
+{
+    m_activeAircraftTaskId = taskId;
+    ui->lblCurrentFile->setText(QStringLiteral("当前任务：%1").arg(taskName));
+    ui->lblCurrentPhase->setText(QStringLiteral("当前阶段：准备执行"));
+    ui->progressTask->setValue(0);
+    ui->progressTask->setFormat(QStringLiteral("%p%"));
+    showTaskProgressControls();
+    if (ui->stkMainPages->currentWidget() == ui->pageExecute) {
+        statusBar()->showMessage(QStringLiteral("升级任务 %1 开始执行").arg(taskId), 5000);
+    }
+}
+
+void MainWindow::onTaskProgressUpdated(const QString& taskId, const QString& step, int progress, qint64 speed)
+{
+    if (!m_activeAircraftTaskId.isEmpty() && taskId != m_activeAircraftTaskId) {
+        return;
+    }
+
+    m_activeAircraftTaskId = taskId;
+    ui->lblCurrentPhase->setText(QStringLiteral("当前阶段：%1").arg(step));
+    ui->progressTask->setValue(qBound(0, progress, 100));
+    if (speed > 0) {
+        ui->progressTask->setFormat(QStringLiteral("%1% (%2 KB/s)")
+                                        .arg(qBound(0, progress, 100))
+                                        .arg(speed / 1024));
+    } else {
+        ui->progressTask->setFormat(QStringLiteral("%p%"));
+    }
+    showTaskProgressControls();
+}
+
+void MainWindow::onTaskFinished(const QString& taskId, bool success, const QString& message)
+{
+    if (!m_activeAircraftTaskId.isEmpty() && taskId != m_activeAircraftTaskId) {
+        return;
+    }
+
+    ui->lblCurrentPhase->setText(
+        QStringLiteral("当前阶段：%1").arg(success ? QStringLiteral("执行完成") : QStringLiteral("执行失败"))
+    );
+    ui->progressTask->setValue(success ? 100 : ui->progressTask->value());
+    ui->progressTask->setFormat(QStringLiteral("%p%"));
+    statusBar()->showMessage(message, 5000);
+    loadExecutableTasks();
+    resetTaskProgressPanel();
+    showTaskStartControls();
 }
 
 void MainWindow::addTaskToTable(const AircraftTask& task, int row)
@@ -421,7 +450,9 @@ void MainWindow::onTaskCheckChanged(QCheckBox* source, bool checked)
     context.operator_user_id = m_userInfo.user_id;
     context.aircraft_task_id = taskId;
     Logger::debug(checked ? "TASK_CHECKED" : "TASK_UNCHECKED",
-                  QString("%1飞机升级任务 %2").arg(checked ? "勾选" : "取消勾选").arg(taskId),
+                  QStringLiteral("%1飞机升级任务 %2")
+                      .arg(checked ? QStringLiteral("勾选") : QStringLiteral("取消勾选"))
+                      .arg(taskId),
                   context,
                   {{"checked", checked}});
 }
@@ -440,24 +471,37 @@ QString MainWindow::selectedAircraftTaskId() const
 void MainWindow::setNetworkConnectionStatus(bool connected)
 {
     ui->lblNetworkConnection->setText(connected
-        ? "网络连接状态：已连接CentralServer"
-        : "网络连接状态：未连接CentralServer");
+        ? QStringLiteral("网络连接状态：已连接CentralServer")
+        : QStringLiteral("网络连接状态：未连接CentralServer"));
 }
 
-void MainWindow::setAircraftConnectionStatus(bool connected)
+void MainWindow::setAircraftConnectionStatus(bool connected, const QString& aircraftCode)
 {
     m_aircraftConnected = connected;
-    ui->lblDeviceConnection->setText(connected
-        ? QStringLiteral("飞机连接状态：已连接AC-1001")
-        : QStringLiteral("飞机连接状态：未连接AC-1001"));
+    m_connectedAircraftCode = connected ? aircraftCode.trimmed() : QString();
+
+    if (!connected) {
+        ui->lblDeviceConnection->setText(QStringLiteral("飞机连接状态：未连接飞机"));
+        return;
+    }
+
+    if (m_connectedAircraftCode.isEmpty()) {
+        ui->lblDeviceConnection->setText(QStringLiteral("飞机连接状态：已连接，等待飞机编号"));
+        return;
+    }
+
+    ui->lblDeviceConnection->setText(QStringLiteral("飞机连接状态：已连接%1").arg(m_connectedAircraftCode));
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     if (!m_userInfo.username.isEmpty()) {
-        int ret = QMessageBox::question(this, "退出确认",
-                                        QString("用户 %1 正在使用程序，是否退出账户并关闭程序？").arg(m_userInfo.username),
-                                        QMessageBox::Yes | QMessageBox::No);
+        const int ret = QMessageBox::question(
+            this,
+            QStringLiteral("退出确认"),
+            QStringLiteral("用户 %1 正在使用程序，是否退出账户并关闭程序？").arg(m_userInfo.username),
+            QMessageBox::Yes | QMessageBox::No
+        );
         if (ret == QMessageBox::No) {
             event->ignore();
             return;
@@ -466,7 +510,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
     event->accept();
     Logger::info("APP_EXIT",
-                 QString("用户 %1 退出程序").arg(m_userInfo.username),
+                 QStringLiteral("用户 %1 退出程序").arg(m_userInfo.username),
                  {{"username", m_userInfo.username}, {"role", m_userInfo.role}});
 }
 
@@ -524,8 +568,13 @@ void MainWindow::startSelectedAircraftTask()
     context.operator_user_id = m_userInfo.user_id;
     context.aircraft_task_id = taskId.toInt();
     Logger::info("TASK_START_SUBMITTED",
-                 QStringLiteral("飞机升级任务已提交执行: %1").arg(taskId),
+                 QStringLiteral("飞机升级任务已提交执行 %1").arg(taskId),
                  context);
+    m_activeAircraftTaskId = taskId;
+    ui->lblCurrentFile->setText(QStringLiteral("当前任务：飞机任务 %1").arg(taskId));
+    ui->lblCurrentPhase->setText(QStringLiteral("当前阶段：等待调度启动"));
+    ui->progressTask->setValue(0);
+    ui->progressTask->setFormat(QStringLiteral("%p%"));
     showTaskProgressControls();
     statusBar()->showMessage(QStringLiteral("已提交升级任务 %1").arg(taskId), 5000);
     loadExecutableTasks();

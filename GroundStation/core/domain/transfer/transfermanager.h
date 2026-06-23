@@ -19,6 +19,7 @@ public:
                           const QString& localPath,
                           const QString& fileName,
                           const QString& sha256);
+    bool requestBatchInstall(const QString& aircraftTaskId);
 
 signals:
     void transferProgress(QString taskId, qint64 sent, qint64 total, int percent);

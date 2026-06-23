@@ -19,7 +19,8 @@ class TransferManager;
 
 enum class TaskRunStage {
     DownloadingFiles,
-    TransferringFiles
+    TransferringFiles,
+    InstallingFiles
 };
 
 class TaskScheduler : public QObject
@@ -71,6 +72,7 @@ private:
     void startDownloadTask(const DeviceTask& deviceTask);
     void startTransferTask(const DeviceTask& deviceTask);
     void startSendToDevice(const QString& localPath);
+    void startInstallStage();
     void completeCurrentAircraftTask(bool success, const QString& message);
     void reportTaskStatus(DeviceTaskStatus aircraftStatus,
                           double aircraftProgress,

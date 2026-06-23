@@ -24,8 +24,8 @@ void MainWindow::setConnectionStatus(bool connected, const QString& message)
     statusBar()->showMessage(message);
 
     setWindowTitle(connected
-        ? "AC-1001 飞机模拟器 - 已连接"
-        : "AC-1001 飞机模拟器 - 未连接");
+        ? "AC-1002 飞机模拟器 - 已连接"
+        : "AC-1002 飞机模拟器 - 未连接");
 }
 
 void MainWindow::on_btnToggleGsConnection_clicked()

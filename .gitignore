@@ -12,3 +12,15 @@ build/
 # 缓存目录
 data/client_cache/
 *.log
+
+# Qt/qmake generated files
+Makefile*
+.qmake.cache
+.qmake.stash
+ui_*.h
+moc_*.cpp
+qrc_*.cpp
+*.obj
+*.dll
+debug/
+release/

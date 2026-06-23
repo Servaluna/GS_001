@@ -12,6 +12,8 @@ struct LogEntry
 {
     QString event_type;
     QString event_level;
+    QString source_file;
+    QString source_function;
     int operator_user_id = -1;
     QString client_machine_id;
     QString session_id;
@@ -54,6 +56,17 @@ public:
                       const QJsonObject& detail = QJsonObject());
     static void debug(const QString& eventType,
                       const QString& message,
+                      const char* sourceFile,
+                      const char* sourceFunction,
+                      const QJsonObject& detail = QJsonObject());
+    static void debug(const QString& eventType,
+                      const QString& message,
+                      const LogContext& context,
+                      const QJsonObject& detail = QJsonObject());
+    static void debug(const QString& eventType,
+                      const QString& message,
+                      const char* sourceFile,
+                      const char* sourceFunction,
                       const LogContext& context,
                       const QJsonObject& detail = QJsonObject());
     static void info(const QString& eventType,
@@ -61,6 +74,17 @@ public:
                      const QJsonObject& detail = QJsonObject());
     static void info(const QString& eventType,
                      const QString& message,
+                     const char* sourceFile,
+                     const char* sourceFunction,
+                     const QJsonObject& detail = QJsonObject());
+    static void info(const QString& eventType,
+                     const QString& message,
+                     const LogContext& context,
+                     const QJsonObject& detail = QJsonObject());
+    static void info(const QString& eventType,
+                     const QString& message,
+                     const char* sourceFile,
+                     const char* sourceFunction,
                      const LogContext& context,
                      const QJsonObject& detail = QJsonObject());
     static void warn(const QString& eventType,
@@ -68,6 +92,17 @@ public:
                      const QJsonObject& detail = QJsonObject());
     static void warn(const QString& eventType,
                      const QString& message,
+                     const char* sourceFile,
+                     const char* sourceFunction,
+                     const QJsonObject& detail = QJsonObject());
+    static void warn(const QString& eventType,
+                     const QString& message,
+                     const LogContext& context,
+                     const QJsonObject& detail = QJsonObject());
+    static void warn(const QString& eventType,
+                     const QString& message,
+                     const char* sourceFile,
+                     const char* sourceFunction,
                      const LogContext& context,
                      const QJsonObject& detail = QJsonObject());
     static void error(const QString& eventType,
@@ -75,6 +110,17 @@ public:
                       const QJsonObject& detail = QJsonObject());
     static void error(const QString& eventType,
                       const QString& message,
+                      const char* sourceFile,
+                      const char* sourceFunction,
+                      const QJsonObject& detail = QJsonObject());
+    static void error(const QString& eventType,
+                      const QString& message,
+                      const LogContext& context,
+                      const QJsonObject& detail = QJsonObject());
+    static void error(const QString& eventType,
+                      const QString& message,
+                      const char* sourceFile,
+                      const char* sourceFunction,
                       const LogContext& context,
                       const QJsonObject& detail = QJsonObject());
 
@@ -92,6 +138,19 @@ public:
     void log(const QString& eventType,
              const QString& level,
              const QString& message,
+             const char* sourceFile,
+             const char* sourceFunction,
+             const QJsonObject& detail = QJsonObject());
+    void log(const QString& eventType,
+             const QString& level,
+             const QString& message,
+             const LogContext& context,
+             const QJsonObject& detail = QJsonObject());
+    void log(const QString& eventType,
+             const QString& level,
+             const QString& message,
+             const char* sourceFile,
+             const char* sourceFunction,
              const LogContext& context,
              const QJsonObject& detail = QJsonObject());
 
@@ -107,6 +166,7 @@ private:
     QString logDirectoryPath() const;
     QString currentLogFilePath() const;
     QString formatLogLine(const LogEntry& entry) const;
+    QString formatConsoleLine(const LogEntry& entry) const;
 
     int m_operatorUserId;
     QString m_clientMachineId;

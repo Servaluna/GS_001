@@ -14,11 +14,15 @@ DeviceConnector::DeviceConnector(QObject *parent)
     , m_cmcPort(0)
     , m_isConnected(false)
     , m_currentFile(nullptr)
+    , m_sendTimer(new QTimer(this))
     , m_fileSize(0)
     , m_sentBytes(0)
 {
     connect(m_server, &QTcpServer::newConnection,
             this, &DeviceConnector::onNewConnection);
+    m_sendTimer->setSingleShot(true);
+    connect(m_sendTimer, &QTimer::timeout,
+            this, &DeviceConnector::onSendFileData);
 }
 
 DeviceConnector::~DeviceConnector()
@@ -67,6 +71,11 @@ bool DeviceConnector::isConnected() const
     return m_socket && m_socket->state() == QAbstractSocket::ConnectedState && m_isConnected;
 }
 
+QString DeviceConnector::connectedAircraftCode() const
+{
+    return m_aircraftCode;
+}
+
 void DeviceConnector::sendFileToDevice(const QString& taskId,
                                        const QString& targetDeviceId,
                                        const QString& localPath,
@@ -76,6 +85,7 @@ void DeviceConnector::sendFileToDevice(const QString& taskId,
     if (!isConnected()) {
         Logger::warn("TRANSFER_START_FAILED",
                      "未连接飞机，无法发送文件",
+                     __FILE__, Q_FUNC_INFO,
                      {{"device_task_id", taskId}, {"target_device_id", targetDeviceId}});
         emit sendFinished(taskId, false, "未连接飞机");
         return;
@@ -84,6 +94,7 @@ void DeviceConnector::sendFileToDevice(const QString& taskId,
     if (!isDeviceOnline(targetDeviceId)) {
         Logger::warn("TRANSFER_START_FAILED",
                      "目标设备不在线",
+                     __FILE__, Q_FUNC_INFO,
                      {{"device_task_id", taskId}, {"target_device_id", targetDeviceId}});
         emit sendFinished(taskId, false, QString("目标设备 %1 不在线").arg(targetDeviceId));
         return;
@@ -93,6 +104,7 @@ void DeviceConnector::sendFileToDevice(const QString& taskId,
     if (!file->exists()) {
         Logger::error("TRANSFER_START_FAILED",
                       "本地文件不存在",
+                      __FILE__, Q_FUNC_INFO,
                       {{"device_task_id", taskId}, {"local_path", localPath}});
         emit sendFinished(taskId, false, "本地文件不存在");
         delete file;
@@ -102,6 +114,7 @@ void DeviceConnector::sendFileToDevice(const QString& taskId,
     if (!file->open(QIODevice::ReadOnly)) {
         Logger::error("TRANSFER_START_FAILED",
                       "无法打开本地文件",
+                      __FILE__, Q_FUNC_INFO,
                       {{"device_task_id", taskId}, {"local_path", localPath}});
         emit sendFinished(taskId, false, "无法打开本地文件");
         delete file;
@@ -119,18 +132,22 @@ void DeviceConnector::sendFileToDevice(const QString& taskId,
 
     Logger::info("TRANSFER_FILE_OPENED",
                  "本地文件已打开，准备发送文件开始命令",
+                 __FILE__, Q_FUNC_INFO,
                  {{"device_task_id", taskId}, {"target_device_id", targetDeviceId}, {"file_name", fileName}, {"file_size", m_fileSize}, {"sha256", sha256}});
 
     if (!sendFileStart(taskId, targetDeviceId, fileName, m_fileSize, sha256)) {
         Logger::error("TRANSFER_START_FAILED",
                       "发送文件开始命令失败",
+                      __FILE__, Q_FUNC_INFO,
                       {{"device_task_id", taskId}, {"target_device_id", targetDeviceId}});
         emit sendFinished(taskId, false, "发送文件开始命令失败");
         cleanupFileTransfer();
         return;
     }
 
-    QTimer::singleShot(SEND_INTERVAL_MS, this, &DeviceConnector::onSendFileData);
+    if (m_sendTimer) {
+        m_sendTimer->start(SEND_INTERVAL_MS);
+    }
 }
 
 DeviceStatus DeviceConnector::getDeviceStatus(const QString& deviceId) const
@@ -147,6 +164,19 @@ bool DeviceConnector::isDeviceOnline(const QString& deviceId) const
 {
     auto it = m_deviceStatusMap.find(deviceId);
     return it != m_deviceStatusMap.end() && it.value().isOnline;
+}
+
+bool DeviceConnector::requestBatchInstall(const QString& aircraftTaskId)
+{
+    if (!isConnected()) {
+        Logger::warn("INSTALL_START_FAILED",
+                     "未连接飞机，无法启动统一安装",
+                     __FILE__, Q_FUNC_INFO,
+                     {{"aircraft_task_id", aircraftTaskId}});
+        return false;
+    }
+
+    return sendInstallStart(aircraftTaskId);
 }
 
 void DeviceConnector::onNewConnection()
@@ -167,6 +197,7 @@ void DeviceConnector::onNewConnection()
         m_cmcIp = socket->peerAddress().toString();
         m_cmcPort = socket->peerPort();
         m_isConnected = true;
+        m_aircraftCode.clear();
         m_receiveBuffer.clear();
 
         connect(m_socket, &QTcpSocket::disconnected,
@@ -180,6 +211,7 @@ void DeviceConnector::onNewConnection()
                      QString("飞机已连接到地面站 %1:%2").arg(m_cmcIp).arg(m_cmcPort),
                      {{"ip", m_cmcIp}, {"port", m_cmcPort}});
         emit cmcConnectionChanged(true, QString());
+        emit aircraftConnectionChanged(true, m_aircraftCode, QString());
     }
 }
 
@@ -190,6 +222,8 @@ void DeviceConnector::onDisconnected()
                  {{"ip", m_cmcIp}, {"port", m_cmcPort}});
 
     m_isConnected = false;
+    const QString disconnectedAircraftCode = m_aircraftCode;
+    m_aircraftCode.clear();
     m_deviceStatusMap.clear();
     cleanupFileTransfer();
 
@@ -202,6 +236,7 @@ void DeviceConnector::onDisconnected()
     }
 
     emit cmcConnectionChanged(false, "飞机连接已断开");
+    emit aircraftConnectionChanged(false, disconnectedAircraftCode, "飞机连接已断开");
 }
 
 void DeviceConnector::onErrorOccurred(QAbstractSocket::SocketError socketError)
@@ -214,6 +249,7 @@ void DeviceConnector::onErrorOccurred(QAbstractSocket::SocketError socketError)
 
     m_isConnected = false;
     emit cmcConnectionChanged(false, errorMsg);
+    emit aircraftConnectionChanged(false, m_aircraftCode, errorMsg);
 }
 
 void DeviceConnector::onReadyRead()
@@ -230,6 +266,9 @@ void DeviceConnector::onReadyRead()
 
     while (parsePacket(m_receiveBuffer, cmd, payload)) {
         switch (cmd) {
+        case Command::AircraftHello:
+            handleAircraftHello(payload);
+            break;
         case Command::DeviceStatusFull:
             handleDeviceStatusFull(payload);
             break;
@@ -257,7 +296,7 @@ void DeviceConnector::onReadyRead()
 void DeviceConnector::onSendFileData()
 {
     if (!m_currentFile || !m_currentFile->isOpen()) {
-        Logger::warn("TRANSFER_SEND_FAILED", "没有正在进行的文件传输");
+        Logger::warn("TRANSFER_SEND_FAILED", "没有正在进行的文件传输", __FILE__, Q_FUNC_INFO);
         return;
     }
 
@@ -268,10 +307,12 @@ void DeviceConnector::onSendFileData()
             if (sendFileEnd()) {
                 Logger::info("TRANSFER_FILE_SENT",
                              "文件数据已发送完成，等待飞机接收结果",
+                             __FILE__, Q_FUNC_INFO,
                              {{"device_task_id", m_currentTaskId}, {"sent_bytes", m_sentBytes}, {"total_size", m_fileSize}});
             } else {
                 Logger::error("TRANSFER_SEND_FAILED",
                               "发送文件结束命令失败",
+                              __FILE__, Q_FUNC_INFO,
                               {{"device_task_id", m_currentTaskId}});
                 emit sendFinished(m_currentTaskId, false, "发送文件结束命令失败");
                 cleanupFileTransfer();
@@ -279,6 +320,7 @@ void DeviceConnector::onSendFileData()
         } else {
             Logger::error("TRANSFER_SEND_FAILED",
                           "文件读取错误",
+                          __FILE__, Q_FUNC_INFO,
                           {{"device_task_id", m_currentTaskId}, {"sent_bytes", m_sentBytes}, {"expected_size", m_fileSize}});
             emit sendFinished(m_currentTaskId, false, "文件读取错误");
             cleanupFileTransfer();
@@ -291,10 +333,13 @@ void DeviceConnector::onSendFileData()
         const int progress = m_fileSize > 0 ? static_cast<int>((m_sentBytes * 100) / m_fileSize) : 100;
 
         emit sendProgress(m_currentTaskId, m_sentBytes, m_fileSize, progress);
-        QTimer::singleShot(SEND_INTERVAL_MS, this, &DeviceConnector::onSendFileData);
+        if (m_sendTimer) {
+            m_sendTimer->start(SEND_INTERVAL_MS);
+        }
     } else {
         Logger::error("TRANSFER_SEND_FAILED",
                       "发送文件数据失败",
+                      __FILE__, Q_FUNC_INFO,
                       {{"device_task_id", m_currentTaskId}, {"sent_bytes", m_sentBytes}, {"total_size", m_fileSize}});
         emit sendFinished(m_currentTaskId, false, "发送数据失败");
         cleanupFileTransfer();
@@ -354,6 +399,7 @@ bool DeviceConnector::sendFileStart(const QString& taskId,
 
     Logger::info("TRANSFER_FILE_START",
                  "发送文件开始命令",
+                 __FILE__, Q_FUNC_INFO,
                  {{"device_task_id", taskId}, {"target_device_id", targetDeviceId}, {"file_name", fileName}, {"file_size", fileSize}, {"sha256", sha256}});
 
     return sendCommand(Command::FileStart, data);
@@ -361,8 +407,25 @@ bool DeviceConnector::sendFileStart(const QString& taskId,
 
 bool DeviceConnector::sendFileEnd()
 {
-    Logger::info("TRANSFER_FILE_END", "发送文件结束命令", {{"device_task_id", m_currentTaskId}});
+    Logger::info("TRANSFER_FILE_END", "发送文件结束命令", __FILE__, Q_FUNC_INFO, {{"device_task_id", m_currentTaskId}});
     return sendCommand(Command::FileEnd);
+}
+
+bool DeviceConnector::sendInstallStart(const QString& aircraftTaskId)
+{
+    QByteArray data;
+    QDataStream stream(&data, QIODevice::WriteOnly);
+    stream.setByteOrder(QDataStream::BigEndian);
+
+    const QByteArray taskIdBytes = aircraftTaskId.toUtf8();
+    stream << static_cast<quint16>(taskIdBytes.size());
+    stream.writeRawData(taskIdBytes.data(), taskIdBytes.size());
+
+    Logger::info("INSTALL_START",
+                 "发送统一安装开始命令",
+                 __FILE__, Q_FUNC_INFO,
+                 {{"aircraft_task_id", aircraftTaskId}});
+    return sendCommand(Command::InstallStart, data);
 }
 
 QByteArray DeviceConnector::buildPacket(Command cmd, const QByteArray& payload)
@@ -441,6 +504,33 @@ bool DeviceConnector::parsePacket(const QByteArray& data, Command& cmd, QByteArr
 
     m_receiveBuffer.remove(0, totalSize);
     return true;
+}
+
+void DeviceConnector::handleAircraftHello(const QByteArray& payload)
+{
+    QDataStream stream(payload);
+    stream.setByteOrder(QDataStream::BigEndian);
+
+    quint16 aircraftCodeSize = 0;
+    stream >> aircraftCodeSize;
+    QByteArray aircraftCodeBytes(aircraftCodeSize, Qt::Uninitialized);
+    if (aircraftCodeSize > 0) {
+        stream.readRawData(aircraftCodeBytes.data(), aircraftCodeSize);
+    }
+
+    const QString aircraftCode = QString::fromUtf8(aircraftCodeBytes).trimmed();
+    if (aircraftCode.isEmpty()) {
+        Logger::warn("AIRCRAFT_HELLO_INVALID",
+                     "飞机连接握手未包含飞机编号",
+                     {{"ip", m_cmcIp}, {"port", m_cmcPort}});
+        return;
+    }
+
+    m_aircraftCode = aircraftCode;
+    Logger::info("AIRCRAFT_IDENTIFIED",
+                 QString("已识别连接飞机：%1").arg(m_aircraftCode),
+                 {{"aircraft_code", m_aircraftCode}, {"ip", m_cmcIp}, {"port", m_cmcPort}});
+    emit aircraftConnectionChanged(true, m_aircraftCode, QString());
 }
 
 void DeviceConnector::handleDeviceStatusFull(const QByteArray& payload)
@@ -567,6 +657,7 @@ void DeviceConnector::handleFileReceiveResult(const QByteArray& payload)
 
     Logger::info(success == 1 ? "TRANSFER_ACCEPTED" : "TRANSFER_REJECTED",
                  success == 1 ? "飞机已接收文件" : "飞机拒绝接收文件",
+                 __FILE__, Q_FUNC_INFO,
                  {{"device_task_id", taskId}, {"message", message}});
 
     emit sendFinished(taskId, success == 1, message);
@@ -606,6 +697,7 @@ void DeviceConnector::handleInstallResult(const QByteArray& payload)
 
     Logger::info(success == 1 ? "INSTALL_RESULT_SUCCESS" : "INSTALL_RESULT_FAILED",
                  success == 1 ? "收到设备安装成功结果" : "收到设备安装失败结果",
+                 __FILE__, Q_FUNC_INFO,
                  {{"device_task_id", taskId}, {"device_code", deviceId}, {"message", message}});
 
     emit installResult(taskId, deviceId, success == 1, message);
@@ -613,6 +705,10 @@ void DeviceConnector::handleInstallResult(const QByteArray& payload)
 
 void DeviceConnector::cleanupFileTransfer()
 {
+    if (m_sendTimer) {
+        m_sendTimer->stop();
+    }
+
     if (m_currentFile) {
         if (m_currentFile->isOpen()) {
             m_currentFile->close();
@@ -645,6 +741,7 @@ void DeviceConnector::cleanupClientConnection()
     m_isConnected = false;
     m_receiveBuffer.clear();
     m_deviceStatusMap.clear();
+    m_aircraftCode.clear();
 }
 
 QTcpSocket* DeviceConnector::clientSocket() const

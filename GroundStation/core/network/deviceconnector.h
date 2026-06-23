@@ -6,6 +6,8 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 
+class QTimer;
+
 struct DeviceStatus {
     QString deviceId;
     QString deviceName;
@@ -27,12 +29,14 @@ public:
     bool startListening(quint16 port = 9001);
     void stopListening();
     bool isConnected() const;
+    QString connectedAircraftCode() const;
 
     void sendFileToDevice(const QString& taskId,
                           const QString& targetDeviceId,
                           const QString& localPath,
                           const QString& fileName,
                           const QString& sha256);
+    bool requestBatchInstall(const QString& aircraftTaskId);
 
     DeviceStatus getDeviceStatus(const QString& deviceId) const;
     QList<DeviceStatus> getAllDeviceStatus() const;
@@ -40,6 +44,7 @@ public:
 
 signals:
     void cmcConnectionChanged(bool connected, QString errorMessage);
+    void aircraftConnectionChanged(bool connected, QString aircraftCode, QString errorMessage);
     void deviceStatusFullUpdated(QList<DeviceStatus> devices);
     void deviceStatusIncrementalUpdated(QList<DeviceStatus> devices);
 
@@ -56,6 +61,7 @@ private slots:
 
 private:
     enum class Command : quint8 {
+        AircraftHello = 0x00,
         DeviceStatusFull = 0x01,
         DeviceStatusUpdate = 0x02,
         FileReceiveResult = 0x03,
@@ -63,6 +69,7 @@ private:
         FileStart = 0x10,
         FileData = 0x11,
         FileEnd = 0x12,
+        InstallStart = 0x13,
         Error = 0xFF
     };
 
@@ -73,12 +80,14 @@ private:
                        qint64 fileSize,
                        const QString& sha256);
     bool sendFileEnd();
+    bool sendInstallStart(const QString& aircraftTaskId);
 
     QByteArray buildPacket(Command cmd, const QByteArray& payload);
     bool parsePacket(const QByteArray& data, Command& cmd, QByteArray& payload);
 
     void handleDeviceStatusFull(const QByteArray& payload);
     void handleDeviceStatusUpdate(const QByteArray& payload);
+    void handleAircraftHello(const QByteArray& payload);
     void handleFileReceiveResult(const QByteArray& payload);
     void handleInstallResult(const QByteArray& payload);
     void cleanupFileTransfer();
@@ -91,6 +100,7 @@ private:
     QString m_cmcIp;
     quint16 m_cmcPort;
     bool m_isConnected;
+    QString m_aircraftCode;
     QByteArray m_receiveBuffer;
 
     QMap<QString, DeviceStatus> m_deviceStatusMap;
@@ -98,6 +108,7 @@ private:
     QString m_currentTaskId;
     QString m_currentTargetDeviceId;
     QFile* m_currentFile;
+    QTimer* m_sendTimer;
     qint64 m_fileSize;
     qint64 m_sentBytes;
     QString m_fileSha256;

@@ -137,15 +137,21 @@ void AppController::showMainPage(const QString& token, const UserInfo& userInfo)
                     m_mainWindow->showExecutePageAndReload();
                 }
             });
-    connect(m_deviceConnector, &DeviceConnector::cmcConnectionChanged,
-            m_mainWindow, [this](bool connected, const QString&) {
+    connect(m_deviceConnector, &DeviceConnector::aircraftConnectionChanged,
+            m_mainWindow, [this](bool connected, const QString& aircraftCode, const QString&) {
                 if (m_mainWindow) {
-                    m_mainWindow->setAircraftConnectionStatus(connected);
+                    m_mainWindow->setAircraftConnectionStatus(connected, aircraftCode);
+                    if (connected && !aircraftCode.isEmpty()) {
+                        QMessageBox::information(m_mainWindow,
+                                                 "飞机连接成功",
+                                                 QString("%1 已成功连接").arg(aircraftCode));
+                    }
                 }
             });
 
     m_mainWindow->setNetworkConnectionStatus(ServerConnector::instance().isConnected());
-    m_mainWindow->setAircraftConnectionStatus(m_deviceConnector && m_deviceConnector->isConnected());
+    m_mainWindow->setAircraftConnectionStatus(m_deviceConnector && m_deviceConnector->isConnected(),
+                                              m_deviceConnector ? m_deviceConnector->connectedAircraftCode() : QString());
     m_mainWindow->show();
     closeLoginPage();
 }
@@ -212,6 +218,11 @@ void AppController::onLogoutRequested()
 
 void AppController::onCentralServerDisconnected()
 {
+    if (m_isShuttingDown) {
+        return;
+    }
+
+    m_isShuttingDown = true;
     Logger::warn("SERVER_DISCONNECTED_DURING_SESSION",
                  "与 CentralServer 的连接已断开，地面站客户端退出");
 
@@ -221,9 +232,7 @@ void AppController::onCentralServerDisconnected()
     QMessageBox::critical(nullptr,
                           "无法连接服务器",
                           "无法连接服务器，程序将退出。");
-    closeMainPage();
-    closeLoginPage();
-    qApp->quit();
+    shutdownApplication();
 }
 
 void AppController::closeLoginPage()
@@ -242,4 +251,24 @@ void AppController::closeMainPage()
         m_mainWindow->deleteLater();
         m_mainWindow.clear();
     }
+}
+
+void AppController::shutdownApplication()
+{
+    if (m_isShuttingDown) {
+        return;
+    }
+
+    m_isShuttingDown = true;
+
+    if (m_deviceConnector) {
+        m_deviceConnector->stopListening();
+    }
+    if (m_taskService) {
+        m_taskService->stop();
+    }
+
+    closeMainPage();
+    closeLoginPage();
+    qApp->quit();
 }

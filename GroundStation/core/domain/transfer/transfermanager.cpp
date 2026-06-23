@@ -49,3 +49,15 @@ void TransferManager::sendFileToDevice(const QString& taskId,
                  {{"device_task_id", taskId}, {"target_device_id", targetDeviceId}, {"file_name", fileName}});
     m_deviceConnector->sendFileToDevice(taskId, targetDeviceId, localPath, fileName, sha256);
 }
+
+bool TransferManager::requestBatchInstall(const QString& aircraftTaskId)
+{
+    if (!m_deviceConnector) {
+        Logger::error("INSTALL_START_FAILED",
+                      "设备连接器未初始化，无法启动统一安装",
+                      {{"aircraft_task_id", aircraftTaskId}});
+        return false;
+    }
+
+    return m_deviceConnector->requestBatchInstall(aircraftTaskId);
+}

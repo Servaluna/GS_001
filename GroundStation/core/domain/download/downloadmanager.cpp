@@ -145,9 +145,10 @@ bool DownloadManager::startDownload(const DeviceTask& deviceTask, const Download
         return false;
     }
 
-    Logger::info("DOWNLOAD_START",
-                 QString("开始下载设备任务 %1 的文件").arg(deviceTask.device_task_id),
-                 {{"download_session_id", context->taskUuid}, {"device_task_id", deviceTask.device_task_id}, {"file_code", context->fileCode}, {"offset", context->downloadedSize}});
+        Logger::info("DOWNLOAD_START",
+                     QString("开始下载设备任务 %1 的文件").arg(deviceTask.device_task_id),
+                     __FILE__, Q_FUNC_INFO,
+                     {{"download_session_id", context->taskUuid}, {"device_task_id", deviceTask.device_task_id}, {"file_code", context->fileCode}, {"offset", context->downloadedSize}});
     return true;
 }
 
@@ -236,7 +237,7 @@ void DownloadManager::onFileChunkReceived(QString taskUuid, const QByteArray& ch
 
     const qint64 bytesWritten = context->tempFile->write(chunkData);
     if (bytesWritten != chunkData.size()) {
-        Logger::error("DOWNLOAD_FAILED", "写入临时文件失败", {{"download_session_id", taskUuid}});
+        Logger::error("DOWNLOAD_FAILED", "写入临时文件失败", __FILE__, Q_FUNC_INFO, {{"download_session_id", taskUuid}});
         emit downloadFailed(taskUuid, 1001, "写入临时文件失败");
         cleanupContext(taskUuid);
         return;
@@ -278,6 +279,7 @@ void DownloadManager::onFileInfoReceived(QString taskUuid, qint64 totalSize, con
     if (context->totalSize > 0 && totalSize != context->totalSize) {
         Logger::error("DOWNLOAD_FAILED",
                       "文件大小不匹配",
+                      __FILE__, Q_FUNC_INFO,
                       {{"download_session_id", taskUuid}, {"expected_size", context->totalSize}, {"actual_size", totalSize}});
         emit downloadFailed(taskUuid, 1003, "文件大小不匹配");
         cleanupContext(taskUuid);
@@ -288,6 +290,7 @@ void DownloadManager::onFileInfoReceived(QString taskUuid, qint64 totalSize, con
         sha256.compare(context->expectedSha256, Qt::CaseInsensitive) != 0) {
         Logger::error("DOWNLOAD_FAILED",
                       "服务器返回的 SHA-256 不匹配",
+                      __FILE__, Q_FUNC_INFO,
                       {{"download_session_id", taskUuid}, {"expected_sha256", context->expectedSha256}, {"actual_sha256", sha256}});
         emit downloadFailed(taskUuid, 1004, "服务器返回的 SHA-256 不匹配");
         cleanupContext(taskUuid);
@@ -306,6 +309,7 @@ void DownloadManager::onServerError(QString taskUuid, int errorCode, const QStri
 
     Logger::error("DOWNLOAD_FAILED",
                   "服务器下载错误",
+                  __FILE__, Q_FUNC_INFO,
                   {{"download_session_id", taskUuid}, {"error_code", errorCode}, {"error_message", errorMessage}});
     emit downloadFailed(taskUuid, errorCode, errorMessage);
     cleanupContext(taskUuid);
@@ -378,6 +382,7 @@ bool DownloadManager::finalizeDownload(DownloadContext& context)
         if (actualSha256.compare(context.expectedSha256, Qt::CaseInsensitive) != 0) {
             Logger::error("DOWNLOAD_VERIFY_FAILED",
                           "SHA-256 校验失败",
+                          __FILE__, Q_FUNC_INFO,
                           {{"download_session_id", context.taskUuid}, {"expected_sha256", context.expectedSha256}, {"actual_sha256", actualSha256}});
             return false;
         }
@@ -392,6 +397,7 @@ bool DownloadManager::finalizeDownload(DownloadContext& context)
         if (!tempFile.rename(context.localPath)) {
             Logger::error("DOWNLOAD_FINALIZE_FAILED",
                           "临时文件重命名失败",
+                          __FILE__, Q_FUNC_INFO,
                           {{"download_session_id", context.taskUuid}, {"local_path", context.localPath}, {"temp_path", context.localTempPath}});
             return false;
         }
@@ -402,6 +408,7 @@ bool DownloadManager::finalizeDownload(DownloadContext& context)
     m_repository->updateDeviceLocalPackagePath(context.deviceTaskId, context.localPath);
     Logger::info("DOWNLOAD_FINISHED",
                  "文件下载完成",
+                 __FILE__, Q_FUNC_INFO,
                  {{"download_session_id", context.taskUuid}, {"device_task_id", context.deviceTaskId}, {"local_path", context.localPath}});
     return true;
 }

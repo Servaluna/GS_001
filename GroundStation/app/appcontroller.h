@@ -33,6 +33,7 @@ private:
     void showMainPage(const QString& token, const UserInfo& userInfo);
     void closeLoginPage();
     void closeMainPage();
+    void shutdownApplication();
 
     QPointer<LoginDialog> m_loginDialog;
     QPointer<MainWindow> m_mainWindow;
@@ -40,6 +41,7 @@ private:
     QPointer<TaskService> m_taskService;
     QString m_pendingToken;
     UserInfo m_pendingUserInfo;
+    bool m_isShuttingDown = false;
 };
 
 #endif // APPCONTROLLER_H

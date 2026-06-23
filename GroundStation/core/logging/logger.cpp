@@ -37,6 +37,15 @@ QString groundStationProjectDir()
     return QDir::currentPath();
 }
 
+QString normalizeSourceFile(const QString& sourceFile)
+{
+    if (sourceFile.isEmpty()) {
+        return QString();
+    }
+
+    return QFileInfo(sourceFile).fileName();
+}
+
 }
 
 QJsonObject LogEntry::toJson() const
@@ -44,6 +53,8 @@ QJsonObject LogEntry::toJson() const
     QJsonObject json;
     json["event_type"] = event_type;
     json["event_level"] = event_level;
+    json["source_file"] = source_file;
+    json["source_function"] = source_function;
     json["operator_user_id"] = operator_user_id > 0 ? operator_user_id : QJsonValue();
     json["client_machine_id"] = client_machine_id;
     json["session_id"] = session_id;
@@ -73,15 +84,43 @@ void Logger::debug(const QString& eventType, const QString& message, const QJson
 
 void Logger::debug(const QString& eventType,
                    const QString& message,
+                   const char* sourceFile,
+                   const char* sourceFunction,
+                   const QJsonObject& detail)
+{
+    instance().log(eventType, "DEBUG", message, sourceFile, sourceFunction, detail);
+}
+
+void Logger::debug(const QString& eventType,
+                   const QString& message,
                    const LogContext& context,
                    const QJsonObject& detail)
 {
     instance().log(eventType, "DEBUG", message, context, detail);
 }
 
+void Logger::debug(const QString& eventType,
+                   const QString& message,
+                   const char* sourceFile,
+                   const char* sourceFunction,
+                   const LogContext& context,
+                   const QJsonObject& detail)
+{
+    instance().log(eventType, "DEBUG", message, sourceFile, sourceFunction, context, detail);
+}
+
 void Logger::info(const QString& eventType, const QString& message, const QJsonObject& detail)
 {
     instance().log(eventType, "INFO", message, detail);
+}
+
+void Logger::info(const QString& eventType,
+                  const QString& message,
+                  const char* sourceFile,
+                  const char* sourceFunction,
+                  const QJsonObject& detail)
+{
+    instance().log(eventType, "INFO", message, sourceFile, sourceFunction, detail);
 }
 
 void Logger::info(const QString& eventType,
@@ -92,9 +131,28 @@ void Logger::info(const QString& eventType,
     instance().log(eventType, "INFO", message, context, detail);
 }
 
+void Logger::info(const QString& eventType,
+                  const QString& message,
+                  const char* sourceFile,
+                  const char* sourceFunction,
+                  const LogContext& context,
+                  const QJsonObject& detail)
+{
+    instance().log(eventType, "INFO", message, sourceFile, sourceFunction, context, detail);
+}
+
 void Logger::warn(const QString& eventType, const QString& message, const QJsonObject& detail)
 {
     instance().log(eventType, "WARN", message, detail);
+}
+
+void Logger::warn(const QString& eventType,
+                  const QString& message,
+                  const char* sourceFile,
+                  const char* sourceFunction,
+                  const QJsonObject& detail)
+{
+    instance().log(eventType, "WARN", message, sourceFile, sourceFunction, detail);
 }
 
 void Logger::warn(const QString& eventType,
@@ -105,9 +163,28 @@ void Logger::warn(const QString& eventType,
     instance().log(eventType, "WARN", message, context, detail);
 }
 
+void Logger::warn(const QString& eventType,
+                  const QString& message,
+                  const char* sourceFile,
+                  const char* sourceFunction,
+                  const LogContext& context,
+                  const QJsonObject& detail)
+{
+    instance().log(eventType, "WARN", message, sourceFile, sourceFunction, context, detail);
+}
+
 void Logger::error(const QString& eventType, const QString& message, const QJsonObject& detail)
 {
     instance().log(eventType, "ERROR", message, detail);
+}
+
+void Logger::error(const QString& eventType,
+                   const QString& message,
+                   const char* sourceFile,
+                   const char* sourceFunction,
+                   const QJsonObject& detail)
+{
+    instance().log(eventType, "ERROR", message, sourceFile, sourceFunction, detail);
 }
 
 void Logger::error(const QString& eventType,
@@ -116,6 +193,16 @@ void Logger::error(const QString& eventType,
                    const QJsonObject& detail)
 {
     instance().log(eventType, "ERROR", message, context, detail);
+}
+
+void Logger::error(const QString& eventType,
+                   const QString& message,
+                   const char* sourceFile,
+                   const char* sourceFunction,
+                   const LogContext& context,
+                   const QJsonObject& detail)
+{
+    instance().log(eventType, "ERROR", message, sourceFile, sourceFunction, context, detail);
 }
 
 void Logger::setOperatorUserId(int userId)
@@ -171,6 +258,23 @@ void Logger::log(const QString& eventType,
 void Logger::log(const QString& eventType,
                  const QString& level,
                  const QString& message,
+                 const char* sourceFile,
+                 const char* sourceFunction,
+                 const QJsonObject& detail)
+{
+    LogEntry entry;
+    entry.event_type = eventType;
+    entry.event_level = level;
+    entry.event_message = message;
+    entry.event_detail = detail;
+    entry.source_file = normalizeSourceFile(QString::fromUtf8(sourceFile ? sourceFile : ""));
+    entry.source_function = QString::fromUtf8(sourceFunction ? sourceFunction : "");
+    log(entry);
+}
+
+void Logger::log(const QString& eventType,
+                 const QString& level,
+                 const QString& message,
                  const LogContext& context,
                  const QJsonObject& detail)
 {
@@ -179,6 +283,34 @@ void Logger::log(const QString& eventType,
     entry.event_level = level;
     entry.event_message = message;
     entry.event_detail = detail;
+    entry.operator_user_id = context.operator_user_id;
+    entry.client_machine_id = context.client_machine_id;
+    entry.session_id = context.session_id;
+    entry.batch_id = context.batch_id;
+    entry.aircraft_task_id = context.aircraft_task_id;
+    entry.device_task_id = context.device_task_id;
+    entry.aircraft_id = context.aircraft_id;
+    entry.device_id = context.device_id;
+    entry.file_id = context.file_id;
+    entry.ip_address = context.ip_address;
+    log(entry);
+}
+
+void Logger::log(const QString& eventType,
+                 const QString& level,
+                 const QString& message,
+                 const char* sourceFile,
+                 const char* sourceFunction,
+                 const LogContext& context,
+                 const QJsonObject& detail)
+{
+    LogEntry entry;
+    entry.event_type = eventType;
+    entry.event_level = level;
+    entry.event_message = message;
+    entry.event_detail = detail;
+    entry.source_file = normalizeSourceFile(QString::fromUtf8(sourceFile ? sourceFile : ""));
+    entry.source_function = QString::fromUtf8(sourceFunction ? sourceFunction : "");
     entry.operator_user_id = context.operator_user_id;
     entry.client_machine_id = context.client_machine_id;
     entry.session_id = context.session_id;
@@ -226,7 +358,7 @@ LogEntry Logger::withDefaults(const LogEntry& entry) const
 
 void Logger::writeToQtLog(const LogEntry& entry) const
 {
-    const QString line = formatLogLine(entry);
+    const QString line = formatConsoleLine(entry);
 
     if (entry.event_level == "ERROR") {
         qCritical().noquote() << line;
@@ -290,11 +422,32 @@ QString Logger::formatLogLine(const LogEntry& entry) const
     const QString detail = QString::fromUtf8(
         QJsonDocument(entry.event_detail).toJson(QJsonDocument::Compact)
     );
-    return QString("[%1][%2][user:%3][session:%4] %5 %6")
+    return QString("[%1][%2] %3 %4")
         .arg(entry.event_level,
              entry.event_type,
-             entry.operator_user_id > 0 ? QString::number(entry.operator_user_id) : QStringLiteral("-"),
-             entry.session_id,
+             entry.event_message,
+             detail);
+}
+
+QString Logger::formatConsoleLine(const LogEntry& entry) const
+{
+    const QString detail = QString::fromUtf8(
+        QJsonDocument(entry.event_detail).toJson(QJsonDocument::Compact)
+    );
+
+    QString sourceText;
+    if (!entry.source_file.isEmpty()) {
+        sourceText = QString("[%1]").arg(entry.source_file);
+        if (!entry.source_function.isEmpty()) {
+            sourceText += QString("[%1]").arg(entry.source_function);
+        }
+        sourceText += ' ';
+    }
+
+    return QString("[%1][%2] %3%4 %5")
+        .arg(entry.event_level,
+             entry.event_type,
+             sourceText,
              entry.event_message,
              detail);
 }

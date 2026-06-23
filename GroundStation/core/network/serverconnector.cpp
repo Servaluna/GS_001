@@ -152,10 +152,10 @@ void ServerConnector::onReadyRead()
                               {"device_task_id", msg.data["device_task_id"].toInt(-1)},
                               {"message", msg.data["message"].toString()}});
             } else {
-                Logger::debug("TASK_STATUS_UPDATE_RESPONSE",
-                              "任务状态回写成功",
-                              {{"aircraft_task_id", msg.data["aircraft_task_id"].toInt(-1)},
-                               {"device_task_id", msg.data["device_task_id"].toInt(-1)}});
+                Logger::info("TASK_STATUS_UPDATE_RESPONSE",
+                             "任务状态回写成功",
+                             {{"aircraft_task_id", msg.data["aircraft_task_id"].toInt(-1)},
+                              {"device_task_id", msg.data["device_task_id"].toInt(-1)}});
             }
             emit taskStatusUpdated(msg.data["success"].toBool(),
                                    msg.data["aircraft_task_id"].toInt(-1),
@@ -275,7 +275,11 @@ bool ServerConnector::updateTaskStatus(const QJsonObject& statusData)
 
     Message reqMsg(MessageType::UpdateTaskStatus, statusData);
     const bool ok = sendMessage(m_socket, reqMsg);
-    if (!ok) {
+    if (ok) {
+        Logger::info("TASK_STATUS_UPDATE_REQUEST",
+                     "发送任务状态回写请求",
+                     statusData);
+    } else {
         Logger::error("TASK_STATUS_UPDATE_REQUEST_FAILED",
                       "任务状态回写请求发送失败",
                       statusData);
